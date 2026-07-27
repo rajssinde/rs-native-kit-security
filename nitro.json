@@ -1,0 +1,23 @@
+{
+  "cxxNamespace": ["rsnativekit_security"],
+  "ios": {
+    "iosModuleName": "Security"
+  },
+  "android": {
+    "androidNamespace": ["rsnativekit","security"],
+    "androidCxxLibName": "rsnativekit_security"
+  },
+  "autolinking": {
+    "Security": {
+      "ios": {
+        "language": "swift",
+        "implementationClassName": "Security"
+      },
+      "android": {
+        "language": "kotlin",
+        "implementationClassName": "Security"
+      }
+    }
+  },
+  "ignorePaths": ["node_modules"]
+}
