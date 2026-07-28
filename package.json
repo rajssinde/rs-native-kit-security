@@ -1,7 +1,7 @@
 {
   "name": "@rs-native-kit/security",
   "version": "0.1.0",
-  "description": "Add for detect root and jailbreak",
+  "description": "Enterprise-grade React Native security SDK: root/jailbreak/emulator/hook detection, tamper & signature integrity, VPN/proxy/screen monitoring, SSL pinning helpers, and a configurable device risk engine.",
   "main": "./lib/module/index.js",
   "types": "./lib/typescript/src/index.d.ts",
   "exports": {
@@ -140,13 +140,21 @@
       "customExportConditions": [
         "require",
         "react-native",
-        "<%- project.sourceCondition -%>"
+        "rs-native-kit-security-source"
       ]
     },
     "modulePathIgnorePatterns": [
       "<rootDir>/example/node_modules",
       "<rootDir>/lib/"
-    ]
+    ],
+    "coverageThreshold": {
+      "global": {
+        "statements": 75,
+        "branches": 80,
+        "functions": 65,
+        "lines": 75
+      }
+    }
   },
   "commitlint": {
     "extends": [

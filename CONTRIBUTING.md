@@ -121,11 +121,18 @@ Our pre-commit hooks verify that your commit message matches this format when co
 
 We use [release-it](https://github.com/release-it/release-it) to make it easier to publish new versions. It handles common tasks like bumping version based on semver, creating tags and releases etc.
 
-To publish new versions, run the following:
+To publish new versions locally, run the following:
 
 ```sh
 yarn release
 ```
+
+Releases can also be run from CI via the manually-triggered [`Release` workflow](.github/workflows/release.yml) (`workflow_dispatch`, defaults to a dry run). It requires a GitHub **environment** named `npm-publish` (Settings → Environments) configured with:
+
+- An `NPM_TOKEN` secret (an npm automation token with publish access to `@rs-native-kit/security`).
+- Optionally, required reviewers, so every publish gets a manual approval gate before it runs.
+
+Nothing publishes automatically on push — every release is a deliberate, manually-triggered action.
 
 
 ### Scripts

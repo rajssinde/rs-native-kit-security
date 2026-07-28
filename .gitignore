@@ -44,6 +44,7 @@ android.iml
 # Cocoapods
 #
 example/ios/Pods
+example/ios/*.xcworkspace
 
 # Ruby
 example/vendor/
@@ -84,3 +85,9 @@ android/generated
 
 # React Native Nitro Modules
 nitrogen/
+
+# Test coverage
+coverage/
+
+# Vite web build output
+example/dist/

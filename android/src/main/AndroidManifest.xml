@@ -1,2 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Loopback socket probe for Frida's default listen ports (hook/detectors/HookDetector.kt) -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- VPN/proxy transport checks (detectors/NetworkMonitor.kt, monitoring/SecurityMonitor.kt) -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 </manifest>

@@ -3,7 +3,7 @@ require "json"
 package = JSON.parse(File.read(File.join(__dir__, "package.json")))
 
 Pod::Spec.new do |s|
-  s.name         = "Security"
+  s.name         = "RsNativeKitSecurity"
   s.version      = package["version"]
   s.summary      = package["description"]
   s.homepage     = package["homepage"]
@@ -18,12 +18,18 @@ Pod::Spec.new do |s|
     "ios/**/*.{m,mm}",
     "cpp/**/*.{hpp,cpp}",
   ]
+  s.exclude_files = "ios/Tests/**/*"
 
   s.dependency 'React-jsi'
   s.dependency 'React-callinvoker'
 
-  load 'nitrogen/generated/ios/Security+autolinking.rb'
+  load 'nitrogen/generated/ios/RsNativeKitSecurity+autolinking.rb'
   add_nitrogen_files(s)
 
   install_modules_dependencies(s)
+
+  s.test_spec 'Tests' do |test_spec|
+    test_spec.source_files = 'ios/Tests/**/*.swift'
+    test_spec.requires_app_host = true
+  end
 end

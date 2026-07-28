@@ -1,0 +1,72 @@
+name: Release
+
+# Manual-only: publishing a new version is a deliberate, reviewed action,
+# not something that should happen automatically on every push to main.
+on:
+  workflow_dispatch:
+    inputs:
+      increment:
+        description: 'Version increment (leave empty to let release-it infer it from Conventional Commits)'
+        required: false
+        type: choice
+        default: ''
+        options:
+          - ''
+          - patch
+          - minor
+          - major
+      dry-run:
+        description: 'Dry run (no tag/publish/GitHub release is created)'
+        required: false
+        type: boolean
+        default: true
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment: npm-publish
+
+    permissions:
+      contents: write
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup
+        uses: ./.github/actions/setup
+
+      - name: Lint, typecheck, test
+        run: |
+          yarn lint
+          yarn typecheck
+          yarn test --coverage
+
+      - name: Build package
+        run: yarn prepare
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Release (dry run)
+        if: ${{ inputs.dry-run }}
+        run: npx release-it ${{ inputs.increment }} --dry-run --ci
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Release
+        if: ${{ !inputs.dry-run }}
+        run: npx release-it ${{ inputs.increment }} --ci
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -1,7 +1,7 @@
 {
   "cxxNamespace": ["rsnativekit_security"],
   "ios": {
-    "iosModuleName": "Security"
+    "iosModuleName": "RsNativeKitSecurity"
   },
   "android": {
     "androidNamespace": ["rsnativekit","security"],

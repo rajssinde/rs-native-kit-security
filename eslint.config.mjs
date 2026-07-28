@@ -24,6 +24,18 @@ export default defineConfig([
     },
   },
   {
-    ignores: ['node_modules/', 'lib/'],
+    ignores: [
+      '**/node_modules/',
+      'lib/',
+      'coverage/',
+      'nitrogen/',
+      'docs/',
+      '**/build/',
+      '**/.cxx/',
+      '**/.gradle/',
+      '**/Pods/',
+      '**/ios/build/',
+      '**/android/build/',
+    ],
   },
 ]);
