@@ -1,6 +1,14 @@
 # @rs-native-kit/security
 
-Enterprise-grade React Native security SDK for Android and iOS — root/jailbreak/emulator/hook detection, tamper & signature integrity, VPN/proxy/screen monitoring, SSL pinning helpers, and a configurable device risk engine. Built on [Nitro Modules](https://nitro.margelo.com/) for the New Architecture: JSI-direct calls, no bridge serialization, thread-safe by design.
+[![npm version](https://img.shields.io/npm/v/@rs-native-kit/security.svg)](https://www.npmjs.com/package/@rs-native-kit/security)
+[![npm downloads](https://img.shields.io/npm/dm/@rs-native-kit/security.svg)](https://www.npmjs.com/package/@rs-native-kit/security)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+[![Platform: iOS | Android](https://img.shields.io/badge/platform-iOS%20%7C%20Android-lightgrey.svg)](#installation)
+
+**Root detection, jailbreak detection, and mobile app security for React Native.** Enterprise-grade security SDK for Android and iOS — root/jailbreak/emulator/hook detection, tamper & signature integrity, VPN/proxy/screen monitoring, SSL pinning helpers, and a configurable device risk engine. Built on [Nitro Modules](https://nitro.margelo.com/) for the New Architecture: JSI-direct calls, no bridge serialization, thread-safe by design.
+
+If you're evaluating a **React Native root detection library**, a **jailbreak detection SDK**, or an **RASP (runtime application self-protection)** solution for a banking, fintech, or otherwise security-sensitive app, this covers root/jailbreak, Frida/Xposed/Magisk hook detection, tamper/integrity checks, SSL pinning, and a scored device-risk engine in one package.
 
 > **Status:** functional on Android (root/emulator/hook/network/screen/integrity — verified via real device+emulator builds) and iOS (jailbreak/simulator/hook/network/screen/integrity — verified via simulator+device builds). Read [Security Notes](docs/SECURITY_NOTES.md) before shipping to production, especially for regulated (banking/healthcare) apps — no on-device SDK is a substitute for server-side verification.
 
@@ -78,7 +86,3 @@ See the [API reference](docs/API.md) for the full surface and [Examples](docs/EX
 ## License
 
 MIT
-
----
-
-Made with [create-react-native-library](https://github.com/callstack/react-native-builder-bob)
