@@ -20,7 +20,7 @@ It is **not** designed to stop a well-resourced, targeted attacker who staticall
 ## What "zero-config" checks can and can't tell you
 
 - `scan()`'s `signatureValid` is always `true` in the default, zero-config call — there is no "known good" hash to compare against without you supplying one. **Call `verifyAppSignature(expectedHash)` with a hash you pin at build time for an authoritative signature check.**
-- `isTampered()` is a heuristic (debuggable/development-signed build detection), not a cryptographic guarantee. It will not catch a competently repackaged app re-signed with a valid certificate — see [Integrity checks](#integrity-checks) below.
+- `isTampered()` is a heuristic (a debuggable, sideloaded, or development-signed *release* build; always `false` in debug builds), not a cryptographic guarantee. It will not catch a competently repackaged app re-signed with a valid certificate — see [Integrity checks](#integrity-checks) below.
 
 ## Integrity checks
 

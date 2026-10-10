@@ -2,7 +2,6 @@ package com.margelo.nitro.rsnativekit.security.detectors
 
 import android.app.AppOpsManager
 import android.content.Context
-import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Debug
 import android.os.Process
@@ -34,13 +33,6 @@ internal class DeveloperModeDetector(private val context: Context) {
   fun isDebuggerAttached(): Boolean {
     return Debug.isDebuggerConnected() || Debug.waitingForDebugger()
   }
-
-  private val knownMockLocationApps = arrayOf(
-    "com.lexa.fakegps",
-    "com.incorporateapps.fakegps.fre",
-    "com.blogspot.newapphorizons.fakegps",
-    "io.github.jsonstat.fakelocation"
-  )
 
   fun isMockLocationEnabled(): Boolean {
     return isMockLocationAppOpEnabled() || isLegacyMockLocationSettingEnabled() || hasMockLocationApp()
@@ -76,14 +68,6 @@ internal class DeveloperModeDetector(private val context: Context) {
   }
 
   private fun hasMockLocationApp(): Boolean {
-    val pm = context.packageManager
-    return knownMockLocationApps.any { pkg ->
-      try {
-        pm.getPackageInfo(pkg, 0)
-        true
-      } catch (_: PackageManager.NameNotFoundException) {
-        false
-      }
-    }
+    return KnownPackages.isAnyInstalled(context.packageManager, KnownPackages.MOCK_LOCATION_APPS)
   }
 }

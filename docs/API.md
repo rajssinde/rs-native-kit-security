@@ -21,7 +21,7 @@ All detection methods are `async` and return `Promise<boolean>` (or `Promise<str
 | `isUsbDebuggingEnabled()` | ✅ | always `false` | No iOS equivalent (Xcode uses a paired trust relationship, not a toggle) |
 | `isDebuggerAttached()` | ✅ | ✅ | Native debugger attach, independent of the JS debugger |
 | `isMockLocationEnabled()` | ✅ | best-effort | iOS: only detectable once a `CLLocation` fix with `sourceInformation` has been delivered |
-| `isVpnConnected()` | ✅ | ✅ | Interface/transport scan — no VPN entitlement required |
+| `isVpnConnected()` | ✅ | ✅ | Android: VPN transport/interface check. iOS: tunnel interface in scoped system network settings. No VPN entitlement required |
 | `isProxyEnabled()` | ✅ | ✅ | |
 | `isScreenRecording()` | heuristic | ✅ (accurate) | iOS has a direct API (`UIScreen.isCaptured`); Android does not |
 | `isScreenCaptured()` | ✅ | ✅ | "was a screenshot just taken" — true for ~5s after a screenshot event |
@@ -30,7 +30,7 @@ All detection methods are `async` and return `Promise<boolean>` (or `Promise<str
 | `isFridaDetected()` | ✅ | ✅ | |
 | `isXposedDetected()` | ✅ | always `false` | Android-only framework |
 | `isLSPosedDetected()` | ✅ | always `false` | Android-only framework |
-| `isTampered()` | ✅ | ✅ | Zero-config heuristic — see [Security Notes](SECURITY_NOTES.md) |
+| `isTampered()` | ✅ | ✅ | Zero-config heuristic, release builds only (always `false` in debug builds) — see [Security Notes](SECURITY_NOTES.md) |
 | `getAppSignatureHash()` | ✅ | ✅ | Returns `Promise<string>` |
 | `verifyAppSignature(hash)` | ✅ | ✅ | Compares against a hash you pin at build time |
 | `verifyApkIntegrity(sha256)` | ✅ | always `true` | APK is an Android concept |

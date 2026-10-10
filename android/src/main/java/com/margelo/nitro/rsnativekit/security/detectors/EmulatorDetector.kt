@@ -1,7 +1,6 @@
 package com.margelo.nitro.rsnativekit.security.detectors
 
 import android.content.Context
-import android.content.pm.PackageManager
 import android.os.Build
 import java.io.File
 
@@ -18,17 +17,6 @@ internal class EmulatorDetector(private val context: Context) {
     "/system/lib/libc_malloc_debug_qemu.so",
     "/sys/qemu_trace",
     "/system/bin/qemu-props"
-  )
-
-  private val emulatorPackages = arrayOf(
-    "com.genymotion.genyd", // Genymotion
-    "com.bluestacks", // BlueStacks
-    "com.bluestacks.home",
-    "com.vphone.launcher", // Nox
-    "com.bignox.app",
-    "com.microvirt.launcher", // MEmu
-    "com.microvirt.market",
-    "com.ldmnq.launcher3" // LDPlayer
   )
 
   fun isDetected(): Boolean {
@@ -70,15 +58,7 @@ internal class EmulatorDetector(private val context: Context) {
   }
 
   private fun hasEmulatorPackages(): Boolean {
-    val pm = context.packageManager
-    return emulatorPackages.any { pkg ->
-      try {
-        pm.getPackageInfo(pkg, 0)
-        true
-      } catch (_: PackageManager.NameNotFoundException) {
-        false
-      }
-    }
+    return KnownPackages.isAnyInstalled(context.packageManager, KnownPackages.EMULATORS)
   }
 
   private fun hasEmulatorTelephonyProperties(): Boolean {

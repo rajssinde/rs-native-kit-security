@@ -43,6 +43,8 @@ Autolinking handles everything — no manual `MainApplication`/Gradle edits need
 - `android.permission.INTERNET` — used only for a local loopback socket probe against Frida's default ports (`isFridaDetected`/`isHookDetected`). Nearly every RN app already has this permission for networking.
 - `android.permission.ACCESS_NETWORK_STATE` — used for VPN/proxy transport checks.
 
+It also declares a `<queries>` block listing the specific root-manager, hooking-framework, emulator, mock-location and overlay apps it checks for. Android 11+ hides other installed apps unless they're declared this way. These are targeted `<package>` entries, not the restricted `QUERY_ALL_PACKAGES` permission, and they merge into your app's manifest automatically.
+
 ### ProGuard / R8
 
 If you enable code shrinking, no extra rules are needed for consumers — the native Kotlin classes are internal to the library and accessed only through the generated Nitro spec, which already ships the correct `@Keep`/`@DoNotStrip` annotations.

@@ -1,7 +1,6 @@
 package com.margelo.nitro.rsnativekit.security.detectors
 
 import android.content.Context
-import android.content.pm.PackageManager
 import com.margelo.nitro.rsnativekit.security.util.ShellUtils
 import java.io.File
 import java.net.InetSocketAddress
@@ -53,25 +52,17 @@ internal class HookDetector(private val context: Context) {
 
   // --- Xposed / EdXposed --------------------------------------------------------
 
-  private val xposedPackages = arrayOf(
-    "de.robv.android.xposed.installer",
-    "org.meowcat.edxposed.manager",
-    "com.solohsu.android.edxp.manager"
-  )
-
   fun isXposedDetected(): Boolean {
     return isClassPresent("de.robv.android.xposed.XposedBridge") ||
       isClassPresent("de.robv.android.xposed.XC_MethodHook") ||
       File("/system/framework/XposedBridge.jar").exists() ||
-      isAnyPackageInstalled(xposedPackages)
+      isAnyPackageInstalled(KnownPackages.XPOSED)
   }
 
   // --- LSPosed -----------------------------------------------------------------
 
-  private val lsposedPackages = arrayOf(
-    "org.lsposed.manager"
-  )
-
+  // SELinux blocks untrusted apps from /data/adb and /data/misc, so these
+  // paths only fire on permissive/misconfigured devices.
   private val lsposedPaths = arrayOf(
     "/data/adb/lspd",
     "/data/misc/lspd",
@@ -80,12 +71,13 @@ internal class HookDetector(private val context: Context) {
 
   fun isLSPosedDetected(): Boolean {
     return isClassPresent("org.lsposed.lspd.core.Main") ||
-      isAnyPackageInstalled(lsposedPackages) ||
+      isAnyPackageInstalled(KnownPackages.LSPOSED) ||
       lsposedPaths.any { File(it).exists() }
   }
 
   // --- Substrate / Riru ------------------------------------------------------------
 
+  // Same SELinux caveat as lsposedPaths.
   private val riruPaths = arrayOf(
     "/data/misc/riru",
     "/data/adb/riru",
@@ -93,7 +85,7 @@ internal class HookDetector(private val context: Context) {
   )
 
   fun isSubstrateOrRiruDetected(): Boolean {
-    return isAnyPackageInstalled(arrayOf("com.saurik.substrate")) ||
+    return KnownPackages.isInstalled(context.packageManager, KnownPackages.SUBSTRATE) ||
       File("/data/data/com.saurik.substrate").exists() ||
       riruPaths.any { File(it).exists() } ||
       hasSubstrateArtifactsInMaps()
@@ -124,14 +116,6 @@ internal class HookDetector(private val context: Context) {
   }
 
   private fun isAnyPackageInstalled(packages: Array<String>): Boolean {
-    val pm = context.packageManager
-    return packages.any { pkg ->
-      try {
-        pm.getPackageInfo(pkg, 0)
-        true
-      } catch (_: PackageManager.NameNotFoundException) {
-        false
-      }
-    }
+    return KnownPackages.isAnyInstalled(context.packageManager, packages)
   }
 }

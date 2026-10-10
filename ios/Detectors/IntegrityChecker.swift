@@ -26,8 +26,17 @@ import CryptoKit
  */
 final class IntegrityChecker {
 
+  /// Debug builds are development-signed with `get-task-allow` by design, so
+  /// the signal only means something in release builds (CocoaPods compiles
+  /// this pod with `DEBUG` in debug-type configurations). A release build
+  /// carrying `get-task-allow` was re-signed with a development profile — the
+  /// usual way a modified IPA gets sideloaded.
   func isTampered() -> Bool {
+    #if DEBUG
+    return false
+    #else
     return hasDebugEntitlement()
+    #endif
   }
 
   func getAppSignatureHash() throws -> String {

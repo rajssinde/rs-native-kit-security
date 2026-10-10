@@ -12,9 +12,11 @@ No. Nitro Modules requires the New Architecture. [Migrate to the New Architectur
 
 The example app's `yarn example web` target exists to preview the **dashboard UI** with `react-native-web`/Vite — it is not a supported detection target. Every detection method throws `SecurityUnsupportedPlatformError` on web rather than pretending the device is secure (see [Security Notes](SECURITY_NOTES.md#web-unsupported-platforms)). Only Android and iOS are real targets.
 
-### Why does `isTampered()` return `true` on my debug build?
+### Why does `isTampered()` always return `false` on my debug build?
 
-That's correct/expected — `isTampered()`'s zero-config heuristic includes "this is a debug/development-signed build" (Android: `FLAG_DEBUGGABLE`; iOS: `get-task-allow` entitlement in the provisioning profile), which is true for every local dev build by design. It should read `false` on a properly signed release/App Store build. If you need a stronger, non-heuristic check, use `verifyAppSignature()`/`verifyApkIntegrity()` with a hash you pin at build time.
+By design. Its zero-config symptoms (Android: `FLAG_DEBUGGABLE` or no installer package; iOS: the `get-task-allow` development entitlement) are normal for every local debug build, so they're only evaluated in release builds. The library is compiled with your app's build type (Android `BuildConfig.DEBUG`, iOS CocoaPods `DEBUG` flag), so this follows your app's configuration automatically. If you use custom iOS build configurations (e.g. `Staging`), map them in your Podfile (`project 'App', 'Staging' => :debug` or `:release`) so the pod is compiled to match.
+
+Note that a release build installed with `adb install` (Android) reports `true`, because it has no installer package — the same symptom a sideloaded, repackaged APK has. For a non-heuristic check, use `verifyAppSignature()`/`verifyApkIntegrity()` with a hash you pin at build time.
 
 ### Why is `isRooted()` always `false` on iOS (and `isJailbroken()` always `false` on Android)?
 

@@ -98,6 +98,8 @@ android {
 
   buildFeatures {
     prefab true
+    // IntegrityChecker reads BuildConfig.DEBUG to tell debug from release builds.
+    buildConfig true
   }
 
   compileOptions {

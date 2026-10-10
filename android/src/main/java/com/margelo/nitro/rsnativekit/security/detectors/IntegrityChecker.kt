@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.os.Build
+import com.margelo.nitro.rsnativekit.security.BuildConfig
 import java.io.File
 import java.security.MessageDigest
 
@@ -16,13 +17,20 @@ import java.security.MessageDigest
  * installer identity). For an authoritative check, apps should call
  * [verifyAppSignature] or [verifyApkIntegrity] with a hash pinned at build
  * time.
+ *
+ * React Native compiles this library with the same build type as the host
+ * app, so [BuildConfig.DEBUG] tells us whether the *app* is a debug build.
+ * Debug builds are debuggable and `adb install`-ed by design, so both
+ * symptoms are only meaningful in release builds.
  */
 internal class IntegrityChecker(private val context: Context) {
 
   fun isTampered(): Boolean {
+    if (BuildConfig.DEBUG) return false
     return isDebuggableReleaseBuild() || hasUntrustedInstaller()
   }
 
+  /** A release-compiled app carrying `FLAG_DEBUGGABLE` was almost certainly repackaged. */
   private fun isDebuggableReleaseBuild(): Boolean {
     return (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
   }

@@ -15,7 +15,7 @@ final class DetectorSmokeTests: XCTestCase {
 
   func testJailbreakDetectorIsConsistentBetweenIsJailbrokenAndReasons() {
     let detector = JailbreakDetector()
-    XCTAssertEqual(detector.isJailbroken(), !detector.reasons().isEmpty())
+    XCTAssertEqual(detector.isJailbroken(), !detector.reasons().isEmpty)
   }
 
   func testHookDetectorDoesNotCrashAndIsConsistent() {

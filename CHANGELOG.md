@@ -17,6 +17,15 @@ Initial implementation of the enterprise security SDK.
 - Enterprise dashboard example app (security score, per-check grid, live event log, refresh button).
 - Full documentation set: Installation, API Reference, Examples, Migration Guide, Security Notes, FAQ, Troubleshooting, Best Practices.
 
+### Fixed
+
+- Android: `isRooted()` reported `true` on almost every device — shell probes like `which su` now count as failed when the command exits non-zero. Shell output is also drained concurrently, so long output (e.g. `getprop`) no longer stalls a check until it times out.
+- Android: the read-write mount check flagged legitimately writable mounts such as `/mnt/vendor/persist`; it now matches the exact `/system`, `/vendor`, `/product` and `/system_ext` mount points.
+- Android 11+: every installed-app check (root managers, Magisk, Xposed/LSPosed/Substrate, emulators, mock-location and overlay apps) silently reported "not installed" because of package visibility filtering. The library manifest now declares these packages under `<queries>`.
+- Android: added a Magisk mount-table signal (`/debug_ramdisk`, `magisk` tmpfs), because SELinux blocks a normal app from the `/data/adb` paths the detector relied on.
+- iOS: `isVpnConnected()` reported `true` on almost every device because iOS always keeps system `utun` interfaces up; it now checks the scoped system network settings instead.
+- `isTampered()` reported `true` on every debug build (both platforms); its heuristics now run in release builds only.
+
 ### Notes
 
 - Built on [Nitro Modules](https://nitro.margelo.com/) (New Architecture only) rather than hand-written TurboModules — see [README Architecture](README.md#architecture) for rationale.

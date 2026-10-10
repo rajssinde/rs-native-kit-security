@@ -1,7 +1,6 @@
 package com.margelo.nitro.rsnativekit.security.detectors
 
 import android.content.Context
-import android.content.pm.PackageManager
 import android.os.Build
 import android.provider.Settings
 
@@ -14,12 +13,6 @@ import android.provider.Settings
  * to abuse overlays for tapjacking / screen-lock bypass.
  */
 internal class OverlayDetector(private val context: Context) {
-
-  private val knownOverlayAbusePackages = arrayOf(
-    "com.baiduAppSearch.searchbox", // historical overlay-abuse offenders used in public research
-    "com.gtp.nextlauncher.overlay",
-    "com.android.systemui.overlay.fake"
-  )
 
   fun hasOverlayPermission(): Boolean {
     return canThisAppDrawOverlays() || hasKnownOverlayAbuseAppInstalled()
@@ -35,14 +28,6 @@ internal class OverlayDetector(private val context: Context) {
   }
 
   private fun hasKnownOverlayAbuseAppInstalled(): Boolean {
-    val pm = context.packageManager
-    return knownOverlayAbusePackages.any { pkg ->
-      try {
-        pm.getPackageInfo(pkg, 0)
-        true
-      } catch (_: PackageManager.NameNotFoundException) {
-        false
-      }
-    }
+    return KnownPackages.isAnyInstalled(context.packageManager, KnownPackages.OVERLAY_ABUSE)
   }
 }

@@ -3,4 +3,56 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- VPN/proxy transport checks (detectors/NetworkMonitor.kt, monitoring/SecurityMonitor.kt) -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!--
+      Android 11+ package visibility: without these entries getPackageInfo() reports every
+      one of these apps as "not installed". Must match detectors/KnownPackages.kt exactly
+      (enforced by KnownPackagesManifestTest). Targeted entries only, no QUERY_ALL_PACKAGES.
+    -->
+    <queries>
+        <!-- Root managers / su providers (RootDetector, MagiskDetector) -->
+        <package android:name="com.topjohnwu.magisk" />
+        <package android:name="com.noshufou.android.su" />
+        <package android:name="com.noshufou.android.su.elite" />
+        <package android:name="eu.chainfire.supersu" />
+        <package android:name="com.koushikdutta.superuser" />
+        <package android:name="com.thirdparty.superuser" />
+        <package android:name="com.yellowes.su" />
+        <package android:name="com.kingroot.kinguser" />
+        <package android:name="com.kingo.root" />
+        <package android:name="com.smedialink.oneclickroot" />
+        <package android:name="com.zhiqupk.root.global" />
+        <package android:name="com.alephzain.framaroot" />
+        <package android:name="me.phh.superuser" />
+        <package android:name="com.geohot.towelroot" />
+        <package android:name="com.ramdroid.appquarantine" />
+
+        <!-- Hooking frameworks (HookDetector) -->
+        <package android:name="de.robv.android.xposed.installer" />
+        <package android:name="org.meowcat.edxposed.manager" />
+        <package android:name="com.solohsu.android.edxp.manager" />
+        <package android:name="org.lsposed.manager" />
+        <package android:name="com.saurik.substrate" />
+
+        <!-- Emulators (EmulatorDetector) -->
+        <package android:name="com.genymotion.genyd" />
+        <package android:name="com.bluestacks" />
+        <package android:name="com.bluestacks.home" />
+        <package android:name="com.vphone.launcher" />
+        <package android:name="com.bignox.app" />
+        <package android:name="com.microvirt.launcher" />
+        <package android:name="com.microvirt.market" />
+        <package android:name="com.ldmnq.launcher3" />
+
+        <!-- Mock location apps (DeveloperModeDetector) -->
+        <package android:name="com.lexa.fakegps" />
+        <package android:name="com.incorporateapps.fakegps.fre" />
+        <package android:name="com.blogspot.newapphorizons.fakegps" />
+        <package android:name="io.github.jsonstat.fakelocation" />
+
+        <!-- Overlay abuse (OverlayDetector) -->
+        <package android:name="com.baiduAppSearch.searchbox" />
+        <package android:name="com.gtp.nextlauncher.overlay" />
+        <package android:name="com.android.systemui.overlay.fake" />
+    </queries>
 </manifest>
