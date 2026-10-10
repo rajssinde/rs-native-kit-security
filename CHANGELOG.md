@@ -17,6 +17,12 @@ Initial implementation of the enterprise security SDK.
 - Enterprise dashboard example app (security score, per-check grid, live event log, refresh button).
 - Full documentation set: Installation, API Reference, Examples, Migration Guide, Security Notes, FAQ, Troubleshooting, Best Practices.
 
+### Added
+
+- Platform attestation: Play Integrity Standard requests on Android (`prepareIntegrityToken`, `requestIntegrityToken`) and App Attest on iOS (`isAppAttestSupported`, `generateAppAttestKey`, `attestAppAttestKey`, `generateAppAttestAssertion`). Tokens are bound to a server challenge and the request via SHA-256 of the data you pass.
+- `@rs-native-kit/security-server` (`server/`): zero-dependency Node 20+ verifier. App Attest attestation and assertion verification against the pinned Apple root (chain, nonce, key ID, App ID, counter, environment); Play Integrity decoding via a service account and policy evaluation with per-requirement failure codes; single-use challenge store. Tested against real OpenSSL-built certificate chains and ECDSA signatures, plus mutation checks.
+- [Attestation guide](docs/ATTESTATION.md).
+
 ### Changed (breaking, before first release)
 
 - Every check returns a `DetectionResult` (`status`: `detected` / `not_detected` / `unsupported` / `not_configured` / `error`, plus reason codes and confidence) instead of a boolean. A check that fails to run, doesn't apply to the platform, or has nothing configured to verify against can no longer read as clean. Methods are renamed `isX()` → `checkX()` so old boolean call sites fail to compile instead of silently misbehaving.

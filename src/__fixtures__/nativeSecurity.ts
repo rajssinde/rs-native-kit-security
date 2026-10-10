@@ -79,6 +79,16 @@ export function createMockNativeSecurity(
     checkSignature: jest.fn(async (_signers: string[]) => checkResult),
     checkApkIntegrity: jest.fn(async (_sha256: string) => checkResult),
     getSigningIdentity: jest.fn(async () => 'deadbeef'),
+    prepareIntegrityToken: jest.fn(async (_n: number) => undefined),
+    requestIntegrityToken: jest.fn(async (_d: string) => 'integrity-token'),
+    isAppAttestSupported: jest.fn(async () => true),
+    generateAppAttestKey: jest.fn(async () => 'key-id'),
+    attestAppAttestKey: jest.fn(
+      async (_k: string, _c: string) => 'attestation'
+    ),
+    generateAppAttestAssertion: jest.fn(
+      async (_k: string, _c: string) => 'assertion'
+    ),
     scan: jest.fn(async (_options) => nativeScan()),
     setEventListener: jest.fn(),
     removeEventListener: jest.fn(),

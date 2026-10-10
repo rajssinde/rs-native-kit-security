@@ -13,7 +13,7 @@ This SDK is designed to detect **opportunistic and semi-sophisticated** threats:
 
 It is **not** designed to stop a well-resourced, targeted attacker who statically patches the app binary to always return "not detected" — no client-side check can, because the attacker controls the exact process running the check. For that threat class, use:
 
-- **Server-side attestation**: [Android Play Integrity API](https://developer.android.com/google/play/integrity) and [Apple App Attest](https://developer.apple.com/documentation/devicecheck)/DeviceCheck. These are cryptographically anchored to the OS/hardware and cannot be spoofed by patching your app — they're the correct tool for a hard guarantee, and this SDK is complementary to them, not a replacement.
+- **Server-side attestation** — built in: see [Attestation](ATTESTATION.md) and the [`server/`](../server/README.md) verifier. [Android Play Integrity API](https://developer.android.com/google/play/integrity) and [Apple App Attest](https://developer.apple.com/documentation/devicecheck)/DeviceCheck. These are cryptographically anchored to the OS/hardware and cannot be spoofed by patching your app — they're the correct tool for a hard guarantee, and this SDK is complementary to them, not a replacement.
 - **Certificate/public-key pinning** enforced in your networking layer (this SDK's `ssl/` helpers assist with building the pin config, but the actual enforcement must live in OkHttp/`URLSession`).
 - **Server-side risk scoring** that combines this SDK's client-reported signal with request-pattern anomaly detection, device fingerprinting, and behavioral signals you can't get from any client SDK.
 

@@ -35,6 +35,14 @@ import { checkHooks, checkFrida, checkXposed, checkLSPosed } from './hook';
 import { checkTampering, checkApkIntegrity } from './integrity';
 import { checkSignature, getSigningIdentity } from './signature';
 import {
+  prepareIntegrityToken,
+  requestIntegrityToken,
+  isAppAttestSupported,
+  generateAppAttestKey,
+  attestAppAttestKey,
+  generateAppAttestAssertion,
+} from './attestation';
+import {
   buildCertificatePin,
   isValidPinFormat,
   isValidPinSet,
@@ -198,6 +206,12 @@ export {
   isDetected,
   describeReason,
   REASON_DESCRIPTIONS,
+  prepareIntegrityToken,
+  requestIntegrityToken,
+  isAppAttestSupported,
+  generateAppAttestKey,
+  attestAppAttestKey,
+  generateAppAttestAssertion,
   buildCertificatePin,
   isValidPinFormat,
   isValidPinSet,
@@ -243,6 +257,12 @@ const Security = {
   getSigningIdentity,
   isDetected,
   describeReason,
+  prepareIntegrityToken,
+  requestIntegrityToken,
+  isAppAttestSupported,
+  generateAppAttestKey,
+  attestAppAttestKey,
+  generateAppAttestAssertion,
   buildCertificatePin,
   isValidPinFormat,
   isValidPinSet,

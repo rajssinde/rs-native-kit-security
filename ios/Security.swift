@@ -17,6 +17,7 @@ class Security: HybridSecuritySpec {
   private let networkMonitor = NetworkMonitor()
   private let screenMonitor = ScreenMonitor()
   private let integrityChecker = IntegrityChecker()
+  private let appAttest = AppAttest()
 
   private let listenerLock = NSLock()
   private var eventListener: ((NativeSecurityEvent) -> Void)?
@@ -100,6 +101,33 @@ class Security: HybridSecuritySpec {
 
   func getSigningIdentity() throws -> Promise<String> {
     Promise.parallel { [integrityChecker] in try integrityChecker.getSigningIdentity() }
+  }
+
+  // MARK: - Attestation
+
+  /// Play Integrity is Android-only; iOS apps use App Attest instead.
+  func prepareIntegrityToken(cloudProjectNumber: Double) throws -> Promise<Void> {
+    Promise.rejected(withError: DetectionError("Play Integrity is Android-only; use App Attest on iOS"))
+  }
+
+  func requestIntegrityToken(requestData: String) throws -> Promise<String> {
+    Promise.rejected(withError: DetectionError("Play Integrity is Android-only; use App Attest on iOS"))
+  }
+
+  func isAppAttestSupported() throws -> Promise<Bool> {
+    Promise.resolved(withResult: appAttest.isSupported())
+  }
+
+  func generateAppAttestKey() throws -> Promise<String> {
+    appAttest.generateKey()
+  }
+
+  func attestAppAttestKey(keyId: String, challenge: String) throws -> Promise<String> {
+    appAttest.attestKey(keyId, challenge: challenge)
+  }
+
+  func generateAppAttestAssertion(keyId: String, clientData: String) throws -> Promise<String> {
+    appAttest.generateAssertion(keyId, clientData: clientData)
   }
 
   // MARK: - Aggregate scan

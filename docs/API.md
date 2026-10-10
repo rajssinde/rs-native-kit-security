@@ -151,6 +151,19 @@ type SecurityEventType =
 
 Native monitoring starts on the first `addListener()` call and stops automatically once the last listener unsubscribes. `SCREENSHOT`/`SCREEN_RECORDING`/`VPN_CONNECTED` (and more) are driven by real OS push notifications where the platform provides one; everything else is re-evaluated on a ~4s poll and only fires on a false→true transition (see [Security Notes](SECURITY_NOTES.md#event-system-push-vs-poll)). Unknown native event types are dropped, never remapped to another threat. `SIGNATURE_INVALID` is reserved and not emitted yet.
 
+## Attestation
+
+| Method | Android | iOS | Notes |
+|---|---|---|---|
+| `prepareIntegrityToken(cloudProjectNumber)` | ✅ | rejects | Warm up once; takes a few seconds |
+| `requestIntegrityToken(requestData)` | ✅ | rejects | Token's `requestHash` = hex SHA-256 of `requestData` |
+| `isAppAttestSupported()` | `false` | ✅ | iOS 14+ physical device |
+| `generateAppAttestKey()` | rejects | ✅ | Resolves `keyId`; persist it |
+| `attestAppAttestKey(keyId, challenge)` | rejects | ✅ | Base64 attestation object; `clientDataHash` = SHA-256 of `challenge` |
+| `generateAppAttestAssertion(keyId, clientData)` | rejects | ✅ | Base64 assertion; `clientDataHash` = SHA-256 of `clientData` |
+
+These produce tokens for **your server** to verify with [`@rs-native-kit/security-server`](../server/README.md). See [Attestation](ATTESTATION.md) for the full flow.
+
 ## SSL pinning helpers
 
 This SDK does not intercept network traffic — RN networking is owned by your app (OkHttp on Android, `URLSession` on iOS). These are typed helpers for assembling the pin config you hand to your networking layer:

@@ -126,6 +126,30 @@ export interface Security extends HybridObject<{
   /** Android: signing certificate SHA-256 (lowercase hex). iOS: Team ID from the code signature. */
   getSigningIdentity(): Promise<string>;
 
+  // --- Attestation: Play Integrity (Android) -----------------------------------------
+  // Each method rejects on the other platform.
+
+  /** Warms up a Standard Integrity token provider for this Google Cloud project. */
+  prepareIntegrityToken(cloudProjectNumber: number): Promise<void>;
+  /**
+   * Standard Integrity token bound to `requestData`: the token's `requestHash`
+   * is the lowercase hex SHA-256 of `requestData`, which the server recomputes.
+   */
+  requestIntegrityToken(requestData: string): Promise<string>;
+
+  // --- Attestation: App Attest (iOS 14+) ---------------------------------------------
+
+  isAppAttestSupported(): Promise<boolean>;
+  /** Creates a new hardware-backed key; resolves its `keyId`. Persist it securely. */
+  generateAppAttestKey(): Promise<string>;
+  /** Base64 attestation object for `keyId`; `clientDataHash` = SHA-256 of `challenge`. */
+  attestAppAttestKey(keyId: string, challenge: string): Promise<string>;
+  /** Base64 assertion for `keyId`; `clientDataHash` = SHA-256 of `clientData`. */
+  generateAppAttestAssertion(
+    keyId: string,
+    clientData: string
+  ): Promise<string>;
+
   // --- Aggregate scan --------------------------------------------------------------
   scan(options: NativeScanOptions): Promise<NativeScanResult>;
 

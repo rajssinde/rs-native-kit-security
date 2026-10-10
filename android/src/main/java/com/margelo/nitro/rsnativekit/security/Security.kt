@@ -4,6 +4,7 @@ import android.os.SystemClock
 import com.facebook.proguard.annotations.DoNotStrip
 import com.margelo.nitro.NitroModules
 import com.margelo.nitro.core.Promise
+import com.margelo.nitro.rsnativekit.security.attestation.PlayIntegrity
 import com.margelo.nitro.rsnativekit.security.detectors.BusyBoxDetector
 import com.margelo.nitro.rsnativekit.security.detectors.Detection
 import com.margelo.nitro.rsnativekit.security.detectors.DeveloperModeDetector
@@ -48,6 +49,7 @@ class Security : HybridSecuritySpec() {
   private val overlayDetector by lazy { OverlayDetector(context) }
   private val screenMonitor by lazy { ScreenMonitor(context) }
   private val integrityChecker by lazy { IntegrityChecker(context) }
+  private val playIntegrity by lazy { PlayIntegrity(context) }
 
   @Volatile
   private var eventListener: ((NativeSecurityEvent) -> Unit)? = null
@@ -108,6 +110,27 @@ class Security : HybridSecuritySpec() {
 
   override fun getSigningIdentity(): Promise<String> =
     Promise.parallel { integrityChecker.getAppSignatureHash() }
+
+  override fun prepareIntegrityToken(cloudProjectNumber: Double): Promise<Unit> = Promise.parallel {
+    playIntegrity.prepare(cloudProjectNumber.toLong())
+  }
+
+  override fun requestIntegrityToken(requestData: String): Promise<String> =
+    Promise.parallel { playIntegrity.request(requestData) }
+
+  /** App Attest is iOS-only; Android apps use Play Integrity instead. */
+  override fun isAppAttestSupported(): Promise<Boolean> = Promise.resolved(false)
+
+  override fun generateAppAttestKey(): Promise<String> = Promise.rejected(appAttestUnavailable())
+
+  override fun attestAppAttestKey(keyId: String, challenge: String): Promise<String> =
+    Promise.rejected(appAttestUnavailable())
+
+  override fun generateAppAttestAssertion(keyId: String, clientData: String): Promise<String> =
+    Promise.rejected(appAttestUnavailable())
+
+  private fun appAttestUnavailable() =
+    UnsupportedOperationException("App Attest is iOS-only; use Play Integrity on Android")
 
   override fun scan(options: NativeScanOptions): Promise<NativeScanResult> = Promise.parallel {
     val startedAt = SystemClock.elapsedRealtime()

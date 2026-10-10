@@ -24,6 +24,7 @@ If you're evaluating a **React Native root detection library**, a **jailbreak de
 - **Overlay exposure** (Android).
 - **Integrity:** signer verification (Android signing-certificate SHA-256, iOS Team ID from the code signature), APK integrity (Android), tamper heuristics.
 - **SSL pinning helpers:** typed certificate-pin builder/validator utilities.
+- **Platform attestation:** Play Integrity (Android) and App Attest (iOS) client APIs, plus a zero-dependency Node verifier ([`server/`](server/README.md)) — the signal a compromised device can't fake.
 - **Device risk engine:** configurable weighted scoring → `LOW` / `MEDIUM` / `HIGH` / `CRITICAL`. Failed checks fail closed; related findings aren't double-counted.
 - **Real-time event system:** subscribe to root/jailbreak/VPN/proxy/screenshot/hook/debugger/tamper events as they happen.
 
@@ -68,6 +69,7 @@ See the [API reference](docs/API.md) for the full surface and [Examples](docs/EX
 - [API Reference](docs/API.md)
 - [Examples](docs/EXAMPLES.md)
 - [Migration Guide](docs/MIGRATION.md)
+- [Attestation (Play Integrity & App Attest)](docs/ATTESTATION.md)
 - [Security Notes](docs/SECURITY_NOTES.md)
 - [FAQ](docs/FAQ.md)
 - [Troubleshooting](docs/TROUBLESHOOTING.md)
