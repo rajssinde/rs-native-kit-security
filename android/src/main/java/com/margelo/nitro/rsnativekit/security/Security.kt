@@ -8,6 +8,7 @@ import com.margelo.nitro.core.Promise
 import com.margelo.nitro.rsnativekit.security.attestation.PlayIntegrity
 import com.margelo.nitro.rsnativekit.security.platform.ActivityTracker
 import com.margelo.nitro.rsnativekit.security.platform.ScreenProtection
+import com.margelo.nitro.rsnativekit.security.platform.SslPinning
 import com.margelo.nitro.rsnativekit.security.detectors.BusyBoxDetector
 import com.margelo.nitro.rsnativekit.security.detectors.Detection
 import com.margelo.nitro.rsnativekit.security.detectors.DeveloperModeDetector
@@ -148,6 +149,10 @@ class Security : HybridSecuritySpec() {
   override fun setOverlayProtection(enabled: Boolean): Promise<Boolean> = Promise.parallel {
     screenProtection.setOverlayProtection(enabled)
     true
+  }
+
+  override fun enableSslPinning(domains: Array<NativePinnedDomain>): Promise<Unit> = Promise.parallel {
+    SslPinning.enable(context, domains)
   }
 
   override fun scan(options: NativeScanOptions): Promise<NativeScanResult> = Promise.parallel {

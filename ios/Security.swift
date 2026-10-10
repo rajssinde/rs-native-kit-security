@@ -120,6 +120,12 @@ class Security: HybridSecuritySpec {
     Promise.resolved(withResult: false)
   }
 
+  // MARK: - SSL pinning
+
+  func enableSslPinning(domains: [NativePinnedDomain]) throws -> Promise<Void> {
+    Promise.parallel { try SslPinning.enable(domains) }
+  }
+
   // MARK: - Attestation
 
   /// Play Integrity is Android-only; iOS apps use App Attest instead.

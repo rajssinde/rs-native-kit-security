@@ -1,6 +1,7 @@
 import type {
   Security,
   NativeDetectionResult,
+  NativePinnedDomain,
   NativeScanOptions,
   NativeScanResult,
   NativeSecurityEvent,
@@ -92,6 +93,8 @@ class UnsupportedSecurity implements Security {
     this.failAsync('setScreenCaptureProtection');
   setOverlayProtection = (_enabled: boolean): Promise<boolean> =>
     this.failAsync('setOverlayProtection');
+  enableSslPinning = (_domains: NativePinnedDomain[]): Promise<void> =>
+    this.failAsync('enableSslPinning');
   prepareIntegrityToken = (_cloudProjectNumber: number): Promise<void> =>
     this.failAsync('prepareIntegrityToken');
   requestIntegrityToken = (_requestData: string): Promise<string> =>

@@ -44,6 +44,7 @@ import {
   generateAppAttestAssertion,
 } from './attestation';
 import {
+  enableSslPinning,
   buildCertificatePin,
   isValidPinFormat,
   isValidPinSet,
@@ -215,6 +216,7 @@ export {
   generateAppAttestKey,
   attestAppAttestKey,
   generateAppAttestAssertion,
+  enableSslPinning,
   buildCertificatePin,
   isValidPinFormat,
   isValidPinSet,
@@ -232,6 +234,7 @@ export {
   RISK_GROUPS,
 } from './risk';
 export type { RiskEvaluation } from './risk';
+export type { SslPinningOptions } from './ssl';
 
 const Security = {
   configure,
@@ -268,6 +271,7 @@ const Security = {
   generateAppAttestKey,
   attestAppAttestKey,
   generateAppAttestAssertion,
+  enableSslPinning,
   buildCertificatePin,
   isValidPinFormat,
   isValidPinSet,

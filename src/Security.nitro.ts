@@ -63,6 +63,13 @@ export interface NativeScanOptions {
   expectedSigners: string[];
 }
 
+export interface NativePinnedDomain {
+  hostname: string;
+  /** Base64 SHA-256 SPKI hashes (no `sha256/` prefix); at least two. */
+  pins: string[];
+  includeSubdomains: boolean;
+}
+
 export interface NativeScanResult {
   checks: NativeSecurityChecks;
   durationMs: number;
@@ -139,6 +146,15 @@ export interface Security extends HybridObject<{
    * drops touches through overlays. iOS: resolves `false` (no overlays).
    */
   setOverlayProtection(enabled: boolean): Promise<boolean>;
+
+  // --- SSL pinning ---------------------------------------------------------------------
+
+  /**
+   * Enforces public-key pinning for the app's React Native networking
+   * (`fetch`/XHR): Android via OkHttp `CertificatePinner` on RN's client
+   * factory, iOS via TrustKit. Call once, before the first request.
+   */
+  enableSslPinning(domains: NativePinnedDomain[]): Promise<void>;
 
   // --- Attestation: Play Integrity (Android) -----------------------------------------
   // Each method rejects on the other platform.

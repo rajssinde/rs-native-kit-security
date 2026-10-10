@@ -173,9 +173,46 @@ Both resolve whether protection is now active and stay applied, across activity 
 
 These produce tokens for **your server** to verify with [`@rs-native-kit/security-server`](../server/README.md). See [Attestation](ATTESTATION.md) for the full flow.
 
-## SSL pinning helpers
+## SSL pinning
 
-This SDK does not intercept network traffic — RN networking is owned by your app (OkHttp on Android, `URLSession` on iOS). These are typed helpers for assembling the pin config you hand to your networking layer:
+`enableSslPinning()` **enforces** public-key (SPKI) pinning on React Native's networking: every `fetch`/`XMLHttpRequest` (and image load on iOS) to a pinned host fails unless the server's certificate passes normal validation *and* its chain contains a pinned key.
+
+```ts
+import Security from '@rs-native-kit/security';
+
+// index.js — before anything makes a network request:
+Security.enableSslPinning(
+  [
+    {
+      hostname: 'api.example.com',
+      pins: [
+        'sha256/<current key>=',
+        'sha256/<backup key>=', // a key you hold but don't use yet
+      ],
+      expiresAt: Date.parse('2027-06-30'),
+    },
+  ],
+  { includeSubdomains: false }
+);
+```
+
+- **Once, before the first request.** React Native builds its HTTP client lazily on first use and keeps it; pinning installed later doesn't apply. A second call rejects.
+- **At least two distinct pins per host.** One must be a backup key, so a certificate rotation can't brick every installed app.
+- **Expiry.** Hosts whose `expiresAt` has passed are skipped with a warning: an app that missed a pin update falls back to normal TLS rather than failing forever. If every host has expired, the call rejects.
+- **How it works.** Android installs an OkHttp `CertificatePinner` into RN's `OkHttpClientProvider` factory. iOS adds a TLS-challenge handler to RN's `RCTHTTPRequestHandler`; that class doesn't otherwise handle challenges, and if a future React Native version starts handling them, enabling fails loudly rather than silently not pinning.
+- **Not covered:** WebSockets, Android image loading (Fresco's own client), and HTTP clients outside React Native's networking (native SDKs).
+
+Get a host's pin:
+
+```sh
+echo | openssl s_client -connect api.example.com:443 -servername api.example.com 2>/dev/null \
+  | openssl x509 -pubkey -noout | openssl pkey -pubin -outform der \
+  | openssl dgst -sha256 -binary | base64
+```
+
+Pinning an intermediate CA's key instead of the leaf means renewing the leaf certificate doesn't require an app update.
+
+### Helpers
 
 ```ts
 import { buildCertificatePin, isValidPinFormat, isValidPinSet, hasExpiredPins } from '@rs-native-kit/security';
@@ -183,7 +220,7 @@ import { buildCertificatePin, isValidPinFormat, isValidPinSet, hasExpiredPins } 
 const pin = buildCertificatePin('api.example.com', ['sha256/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='], Date.now() + 90 * 86_400_000);
 
 if (hasExpiredPins([pin])) {
-  // rotate before your pin set hard-fails all requests
+  // rotate before the pins lapse
 }
 ```
 

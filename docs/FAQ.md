@@ -30,9 +30,9 @@ Because every on-device check can be hidden from: Magisk DenyList, Shamiko, jail
 
 100% on iOS (`targetEnvironment(simulator)` is a compile-time flag baked into the correct binary slice — there's no way for it to be wrong). On Android, it's signal-based (build fingerprint, known emulator packages, QEMU artifacts) and can theoretically be spoofed by a sufficiently customized emulator build, though this covers the common ones (stock AVD, Genymotion, BlueStacks, Nox, MEmu, LDPlayer) reliably.
 
-### Does this intercept my network requests for SSL pinning?
+### Does this enforce SSL pinning on my network requests?
 
-No. `ssl/` ships typed helpers for building/validating a pin set (`buildCertificatePin`, `isValidPinSet`, `hasExpiredPins`) — you still enforce pinning in your networking layer (OkHttp `CertificatePinner` on Android, `URLSessionDelegate` trust evaluation on iOS). See [API Reference](API.md#ssl-pinning-helpers).
+Yes, if you call `enableSslPinning()` at startup, before the first request. It covers React Native's `fetch`/`XMLHttpRequest` on both platforms, plus image loading on iOS. It doesn't cover WebSockets or HTTP clients outside React Native's networking stack. See [API Reference](API.md#ssl-pinning).
 
 ### Can I customize which checks contribute to the risk score?
 

@@ -30,6 +30,8 @@ Initial implementation of the enterprise security SDK.
 - `setScreenCaptureProtection()` (Android `FLAG_SECURE`; iOS cover while captured / in app switcher) and `setOverlayProtection()` (Android overlay hiding + touch filtering).
 - Android 14+ screenshot callbacks and Android 15+ screen-recording callbacks; `SCREEN_RECORDING` events on Android.
 
+- `enableSslPinning()`: enforced public-key pinning on React Native networking — Android via OkHttp `CertificatePinner` on RN's client factory, iOS via a TLS-challenge handler on RN's `RCTHTTPRequestHandler` with SPKI hashing (no third-party dependency). Requires a backup pin per host; skips expired hosts with a warning. Verified on device emulators/simulators: correct pin → 200, wrong pin → blocked, unpinned host unaffected.
+
 ### Fixed (pre-existing)
 
 - Android: older-Android `SCREENSHOT` events fired for every new image (camera photos, downloads); they now require a confirmed screenshot.

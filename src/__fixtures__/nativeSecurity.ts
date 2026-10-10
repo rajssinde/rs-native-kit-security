@@ -81,6 +81,7 @@ export function createMockNativeSecurity(
     getSigningIdentity: jest.fn(async () => 'deadbeef'),
     setScreenCaptureProtection: jest.fn(async (_e: boolean) => true),
     setOverlayProtection: jest.fn(async (_e: boolean) => true),
+    enableSslPinning: jest.fn(async (_d: unknown) => undefined),
     prepareIntegrityToken: jest.fn(async (_n: number) => undefined),
     requestIntegrityToken: jest.fn(async (_d: string) => 'integrity-token'),
     isAppAttestSupported: jest.fn(async () => true),
