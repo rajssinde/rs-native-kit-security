@@ -1,20 +1,25 @@
-import { getNativeSecurity } from '../specs/nativeSecurity';
+import { runCheck } from '../specs/runCheck';
+import type { DetectionResult } from '../types';
 
 /**
- * Zero-config tamper heuristic, evaluated on release builds only (always
- * `false` in debug builds). Android: `FLAG_DEBUGGABLE` set, or no installer
- * package recorded (sideloaded). iOS: development-signing `get-task-allow`
- * entitlement present (re-signed with a development profile). Does not catch
- * a repackaged app re-signed for distribution — use `verifyAppSignature()`.
+ * Zero-config tamper heuristic, release builds only (`unsupported` with
+ * reason `DEBUG_BUILD` in debug builds). Android: debuggable flag, or no
+ * installer recorded (sideloaded). iOS: development-signing entitlement.
+ * Doesn't catch a repackaged app re-signed for distribution — configure
+ * expected signers and use `checkSignature()` for that.
  */
-export function isTampered(): Promise<boolean> {
-  return getNativeSecurity().isTampered();
+export function checkTampering(): Promise<DetectionResult> {
+  return runCheck((native) => native.checkTampering());
 }
 
 /**
- * Android: compares the running APK's SHA-256 against `expectedSha256`.
- * iOS has no APK equivalent and always resolves `true` (not applicable).
+ * Android: `detected` when the base APK's SHA-256 differs from
+ * `expectedSha256`. Only usable for APKs you distribute yourself — Google
+ * Play re-signs and splits uploads, so a build-time hash never matches a
+ * Play install. iOS: `unsupported`.
  */
-export function verifyApkIntegrity(expectedSha256: string): Promise<boolean> {
-  return getNativeSecurity().verifyApkIntegrity(expectedSha256);
+export function checkApkIntegrity(
+  expectedSha256: string
+): Promise<DetectionResult> {
+  return runCheck((native) => native.checkApkIntegrity(expectedSha256));
 }

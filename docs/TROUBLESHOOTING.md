@@ -39,7 +39,7 @@ Almost always a stale build. Nitro's native glue is generated at build time, not
 
 Make sure `yarn nitrogen` has been run after any change to `src/Security.nitro.ts` or `nitro.json`, and that you're not mixing a stale `nitrogen/generated/` directory from before an `iosModuleName`/`androidNamespace` change. Delete `nitrogen/generated/` and re-run `yarn nitrogen` if in doubt.
 
-## `isFridaDetected()` / hook checks seem slow
+## `checkFrida()` / hook checks seem slow
 
 The Frida port-scan check opens a loopback socket with a short (200ms) timeout per port — on a device with a strict firewall or unusual network stack, this can add up to ~400ms across both default Frida ports. This runs off the JS thread already (`Promise.parallel`), so it shouldn't cause UI jank, but if you're calling `scan()` synchronously before rendering a screen, show a loading state rather than blocking navigation.
 
@@ -49,9 +49,17 @@ The Frida port-scan check opens a loopback socket with a short (200ms) timeout p
 - **iOS**: `UIScreen.capturedDidChangeNotification`/`userDidTakeScreenshotNotification` only fire while your app is in the foreground, per Apple's documented behavior.
 - Both: confirm you actually have an active listener — `addListener()` must be called (and its returned unsubscribe function *not* called) for native monitoring to be running at all; see [API Reference](API.md#event-system).
 
-## `verifyAppSignature()` / `getAppSignatureHash()` throws on iOS
+## `checks.signature` is `not_configured`
 
-This is expected if the running bundle has neither an embedded provisioning profile nor a `_CodeSignature/CodeResources` file — e.g. certain ad-hoc test harnesses. On a normal Development, Ad Hoc, Enterprise, or App Store build, one of the two is always present. See [Security Notes](SECURITY_NOTES.md#integrity-checks) for why iOS signature verification works differently from Android's.
+No expected signers are configured for the running platform. Call `Security.configure({ expectedSigners: { android: [...], ios: [...] } })` at startup — see [API Reference](API.md#configuration).
+
+## `checks.signature` is `error` on iOS
+
+The Team ID couldn't be read from the app's code signature — `error` says why. Expected in the iOS Simulator and in unsigned test harnesses, whose binaries carry no team-signed entitlements. On a device build signed by your team it should always resolve. `getSigningIdentity()` rejects with the same cause.
+
+## A check reports `error`
+
+`result.error` explains which signals failed and why (for example an unreadable `/proc` file under an unusual SELinux policy). `scan()` lists such checks in `report.failed`, and by default scores them like detections (`failedCheckPenalty`). Please open an issue with the `error` text, device model and OS version.
 
 ## Jest tests fail with "Cannot find module '@rs-native-kit/security'" in a consuming app
 

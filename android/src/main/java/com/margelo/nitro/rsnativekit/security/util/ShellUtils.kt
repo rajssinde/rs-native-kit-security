@@ -97,6 +97,12 @@ internal object ShellUtils {
     }
   }
 
+  /**
+   * Reads a file that should always be readable by the app (e.g. `/proc/self/maps`),
+   * throwing if it isn't — so a detector reports the signal as failed, not clean.
+   */
+  fun readFile(path: String): String = File(path).readText()
+
   /** Reads a whole file as text, or `null` on any failure (missing, unreadable, SELinux-denied, ...). */
   fun readFileOrNull(path: String): String? {
     return try {

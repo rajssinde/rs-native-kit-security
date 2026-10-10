@@ -1,21 +1,25 @@
-import { getNativeSecurity } from '../specs/nativeSecurity';
+import { runCheck } from '../specs/runCheck';
+import type { DetectionResult } from '../types';
 
-/** Android: `Settings.Global.DEVELOPMENT_SETTINGS_ENABLED`. Not applicable on iOS. */
-export function isDeveloperModeEnabled(): Promise<boolean> {
-  return getNativeSecurity().isDeveloperModeEnabled();
+/** Android: developer options setting. iOS: low-confidence proxy (embedded provisioning profile). */
+export function checkDeveloperMode(): Promise<DetectionResult> {
+  return runCheck((native) => native.checkDeveloperMode());
 }
 
-/** Android: `Settings.Global.ADB_ENABLED`. Not applicable on iOS. */
-export function isUsbDebuggingEnabled(): Promise<boolean> {
-  return getNativeSecurity().isUsbDebuggingEnabled();
+/** Android: `Settings.Global.ADB_ENABLED`. iOS: `unsupported`. */
+export function checkUsbDebugging(): Promise<DetectionResult> {
+  return runCheck((native) => native.checkUsbDebugging());
 }
 
-/** Cross-platform: native debugger/ptrace attach detection. */
-export function isDebuggerAttached(): Promise<boolean> {
-  return getNativeSecurity().isDebuggerAttached();
+/** Android: Java (JDWP) debugger. iOS: `P_TRACED` via `sysctl`. Independent of any JS debugger. */
+export function checkDebugger(): Promise<DetectionResult> {
+  return runCheck((native) => native.checkDebugger());
 }
 
-/** Android: `Settings.Secure.ALLOW_MOCK_LOCATION` / mock-location-app detection. */
-export function isMockLocationEnabled(): Promise<boolean> {
-  return getNativeSecurity().isMockLocationEnabled();
+/**
+ * Android: this app selected as mock-location provider; fake-GPS apps installed (weak).
+ * iOS: last location fix simulated by software — needs location permission and a fix.
+ */
+export function checkMockLocation(): Promise<DetectionResult> {
+  return runCheck((native) => native.checkMockLocation());
 }

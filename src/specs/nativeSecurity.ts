@@ -1,5 +1,7 @@
 import type {
   Security,
+  NativeDetectionResult,
+  NativeScanOptions,
   NativeScanResult,
   NativeSecurityEvent,
 } from '../Security.nitro';
@@ -42,101 +44,52 @@ class UnsupportedSecurity implements Security {
     return Promise.reject(new SecurityUnsupportedPlatformError(feature));
   }
 
-  isRooted(): Promise<boolean> {
-    return this.failAsync('isRooted');
-  }
-
-  isMagiskDetected(): Promise<boolean> {
-    return this.failAsync('isMagiskDetected');
-  }
-
-  isBusyBoxDetected(): Promise<boolean> {
-    return this.failAsync('isBusyBoxDetected');
-  }
-
-  isJailbroken(): Promise<boolean> {
-    return this.failAsync('isJailbroken');
-  }
-
-  isEmulator(): Promise<boolean> {
-    return this.failAsync('isEmulator');
-  }
-
-  isDeveloperModeEnabled(): Promise<boolean> {
-    return this.failAsync('isDeveloperModeEnabled');
-  }
-
-  isUsbDebuggingEnabled(): Promise<boolean> {
-    return this.failAsync('isUsbDebuggingEnabled');
-  }
-
-  isDebuggerAttached(): Promise<boolean> {
-    return this.failAsync('isDebuggerAttached');
-  }
-
-  isMockLocationEnabled(): Promise<boolean> {
-    return this.failAsync('isMockLocationEnabled');
-  }
-
-  isVpnConnected(): Promise<boolean> {
-    return this.failAsync('isVpnConnected');
-  }
-
-  isProxyEnabled(): Promise<boolean> {
-    return this.failAsync('isProxyEnabled');
-  }
-
-  isScreenRecording(): Promise<boolean> {
-    return this.failAsync('isScreenRecording');
-  }
-
-  isScreenCaptured(): Promise<boolean> {
-    return this.failAsync('isScreenCaptured');
-  }
-
-  hasOverlayPermission(): Promise<boolean> {
-    return this.failAsync('hasOverlayPermission');
-  }
-
-  isHookDetected(): Promise<boolean> {
-    return this.failAsync('isHookDetected');
-  }
-
-  isFridaDetected(): Promise<boolean> {
-    return this.failAsync('isFridaDetected');
-  }
-
-  isXposedDetected(): Promise<boolean> {
-    return this.failAsync('isXposedDetected');
-  }
-
-  isLSPosedDetected(): Promise<boolean> {
-    return this.failAsync('isLSPosedDetected');
-  }
-
-  isTampered(): Promise<boolean> {
-    return this.failAsync('isTampered');
-  }
-
-  getAppSignatureHash(): Promise<string> {
-    return this.failAsync('getAppSignatureHash');
-  }
-
-  verifyAppSignature(_expectedSignatureHash: string): Promise<boolean> {
-    return this.failAsync('verifyAppSignature');
-  }
-
-  verifyApkIntegrity(_expectedSha256: string): Promise<boolean> {
-    return this.failAsync('verifyApkIntegrity');
-  }
-
-  isSslPinningSupported(): Promise<boolean> {
-    return this.failAsync('isSslPinningSupported');
-  }
-
-  scan(): Promise<NativeScanResult> {
-    return this.failAsync('scan');
-  }
+  checkRoot = (): Promise<NativeDetectionResult> => this.failAsync('checkRoot');
+  checkMagisk = (): Promise<NativeDetectionResult> =>
+    this.failAsync('checkMagisk');
+  checkBusyBox = (): Promise<NativeDetectionResult> =>
+    this.failAsync('checkBusyBox');
+  checkJailbreak = (): Promise<NativeDetectionResult> =>
+    this.failAsync('checkJailbreak');
+  checkEmulator = (): Promise<NativeDetectionResult> =>
+    this.failAsync('checkEmulator');
+  checkDeveloperMode = (): Promise<NativeDetectionResult> =>
+    this.failAsync('checkDeveloperMode');
+  checkUsbDebugging = (): Promise<NativeDetectionResult> =>
+    this.failAsync('checkUsbDebugging');
+  checkDebugger = (): Promise<NativeDetectionResult> =>
+    this.failAsync('checkDebugger');
+  checkMockLocation = (): Promise<NativeDetectionResult> =>
+    this.failAsync('checkMockLocation');
+  checkVpn = (): Promise<NativeDetectionResult> => this.failAsync('checkVpn');
+  checkProxy = (): Promise<NativeDetectionResult> =>
+    this.failAsync('checkProxy');
+  checkScreenRecording = (): Promise<NativeDetectionResult> =>
+    this.failAsync('checkScreenRecording');
+  checkScreenCapture = (): Promise<NativeDetectionResult> =>
+    this.failAsync('checkScreenCapture');
+  checkOverlay = (): Promise<NativeDetectionResult> =>
+    this.failAsync('checkOverlay');
+  checkHooks = (): Promise<NativeDetectionResult> =>
+    this.failAsync('checkHooks');
+  checkFrida = (): Promise<NativeDetectionResult> =>
+    this.failAsync('checkFrida');
+  checkXposed = (): Promise<NativeDetectionResult> =>
+    this.failAsync('checkXposed');
+  checkLSPosed = (): Promise<NativeDetectionResult> =>
+    this.failAsync('checkLSPosed');
+  checkTampering = (): Promise<NativeDetectionResult> =>
+    this.failAsync('checkTampering');
+  checkSignature = (
+    _expectedSigners: string[]
+  ): Promise<NativeDetectionResult> => this.failAsync('checkSignature');
+  checkApkIntegrity = (
+    _expectedSha256: string
+  ): Promise<NativeDetectionResult> => this.failAsync('checkApkIntegrity');
+  getSigningIdentity = (): Promise<string> =>
+    this.failAsync('getSigningIdentity');
+  scan = (_options: NativeScanOptions): Promise<NativeScanResult> =>
+    this.failAsync('scan');
 
   setEventListener(_listener: (event: NativeSecurityEvent) => void): void {
     this.fail('setEventListener');

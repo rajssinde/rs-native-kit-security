@@ -1,35 +1,27 @@
+import { Platform } from 'react-native';
+import { expectedSignersFor } from '../config';
 import { getNativeSecurity } from '../specs/nativeSecurity';
-import { timingSafeEqual } from '../utils/validate';
+import { runCheck } from '../specs/runCheck';
+import type { DetectionResult, SecurityPlatform } from '../types';
 
 /**
- * Android: SHA-256 of the app's signing certificate. iOS: a digest derived
- * from the embedded provisioning profile / code-signing identity.
+ * The app's signing identity — Android: SHA-256 of the signing certificate
+ * (lowercase hex). iOS: the Team ID from the app's code signature. Log it from
+ * a release build to find the value to pass to `configure({ expectedSigners })`.
  */
-export function getAppSignatureHash(): Promise<string> {
-  return getNativeSecurity().getAppSignatureHash();
+export function getSigningIdentity(): Promise<string> {
+  return getNativeSecurity().getSigningIdentity();
 }
 
 /**
- * Verifies the running app's signature against `expectedSignatureHash`
- * (hex or base64, matching whatever `getAppSignatureHash()` returns for the
- * target platform). Delegates to native for the primary check, and never
- * trusts a JS-side-only comparison as the sole guard against tampering.
+ * `detected` when the app's signer matches none of the expected signers —
+ * `expectedSigners` if given, otherwise the ones set via `configure()`.
+ * `not_configured` when there are none.
  */
-export async function verifyAppSignature(
-  expectedSignatureHash: string
-): Promise<boolean> {
-  return getNativeSecurity().verifyAppSignature(expectedSignatureHash);
-}
-
-/**
- * Convenience helper: fetches the current signature hash and compares it to
- * `expectedSignatureHash` using a timing-safe comparison. Prefer
- * `verifyAppSignature()` for the authoritative native-verified result — use
- * this only when you need the raw hash value too.
- */
-export async function compareAppSignature(
-  expectedSignatureHash: string
-): Promise<{ matches: boolean; actual: string }> {
-  const actual = await getAppSignatureHash();
-  return { matches: timingSafeEqual(actual, expectedSignatureHash), actual };
+export function checkSignature(
+  expectedSigners?: string[]
+): Promise<DetectionResult> {
+  const signers =
+    expectedSigners ?? expectedSignersFor(Platform.OS as SecurityPlatform);
+  return runCheck((native) => native.checkSignature(signers));
 }

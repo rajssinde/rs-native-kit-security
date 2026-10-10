@@ -1,48 +1,10 @@
 import { describe, expect, it, jest } from '@jest/globals';
-import type { Security as NativeSecuritySpec } from '../Security.nitro';
+import {
+  createMockNativeSecurity,
+  detected,
+} from '../__fixtures__/nativeSecurity';
 
-type MockNativeSecurity = {
-  [K in keyof NativeSecuritySpec]: NativeSecuritySpec[K] extends (
-    ...args: infer A
-  ) => infer R
-    ? jest.Mock<(...args: A) => R>
-    : NativeSecuritySpec[K];
-};
-
-const mockNativeSecurity: MockNativeSecurity = {
-  name: 'Security',
-  toString: jest.fn(),
-  equals: jest.fn(),
-  dispose: jest.fn(),
-  isRooted: jest.fn(async () => true),
-  isMagiskDetected: jest.fn(async () => true),
-  isBusyBoxDetected: jest.fn(async () => true),
-  isJailbroken: jest.fn(async () => true),
-  isEmulator: jest.fn(async () => true),
-  isDeveloperModeEnabled: jest.fn(async () => true),
-  isUsbDebuggingEnabled: jest.fn(async () => true),
-  isDebuggerAttached: jest.fn(async () => true),
-  isMockLocationEnabled: jest.fn(async () => true),
-  isVpnConnected: jest.fn(async () => true),
-  isProxyEnabled: jest.fn(async () => true),
-  isScreenRecording: jest.fn(async () => true),
-  isScreenCaptured: jest.fn(async () => true),
-  hasOverlayPermission: jest.fn(async () => true),
-  isHookDetected: jest.fn(async () => true),
-  isFridaDetected: jest.fn(async () => true),
-  isXposedDetected: jest.fn(async () => true),
-  isLSPosedDetected: jest.fn(async () => true),
-  isTampered: jest.fn(async () => true),
-  getAppSignatureHash: jest.fn(async () => 'deadbeef'),
-  verifyAppSignature: jest.fn(async () => true),
-  verifyApkIntegrity: jest.fn(async () => true),
-  isSslPinningSupported: jest.fn(async () => true),
-  scan: jest.fn(),
-  setEventListener: jest.fn(),
-  removeEventListener: jest.fn(),
-  startMonitoring: jest.fn(),
-  stopMonitoring: jest.fn(),
-};
+const mockNativeSecurity = createMockNativeSecurity(detected('TEST_SIGNAL'));
 
 jest.mock('../specs/nativeSecurity', () => ({
   isNativeSecuritySupported: true,
@@ -60,108 +22,61 @@ const screen = require('../screen');
 const hook = require('../hook');
 const integrity = require('../integrity');
 const signature = require('../signature');
-const ssl = require('../ssl');
+
+const EXPECTED = {
+  status: 'detected',
+  reasons: ['TEST_SIGNAL'],
+  confidence: 'high',
+};
+
+/** [module, exported function, native method] for every no-argument check. */
+const CHECKS: [
+  Record<string, () => Promise<unknown>>,
+  string,
+  keyof typeof mockNativeSecurity,
+][] = [
+  [root, 'checkRoot', 'checkRoot'],
+  [root, 'checkMagisk', 'checkMagisk'],
+  [root, 'checkBusyBox', 'checkBusyBox'],
+  [jailbreak, 'checkJailbreak', 'checkJailbreak'],
+  [emulator, 'checkEmulator', 'checkEmulator'],
+  [developerMode, 'checkDeveloperMode', 'checkDeveloperMode'],
+  [developerMode, 'checkUsbDebugging', 'checkUsbDebugging'],
+  [developerMode, 'checkDebugger', 'checkDebugger'],
+  [developerMode, 'checkMockLocation', 'checkMockLocation'],
+  [vpn, 'checkVpn', 'checkVpn'],
+  [proxy, 'checkProxy', 'checkProxy'],
+  [overlay, 'checkOverlay', 'checkOverlay'],
+  [screen, 'checkScreenRecording', 'checkScreenRecording'],
+  [screen, 'checkScreenCapture', 'checkScreenCapture'],
+  [hook, 'checkHooks', 'checkHooks'],
+  [hook, 'checkFrida', 'checkFrida'],
+  [hook, 'checkXposed', 'checkXposed'],
+  [hook, 'checkLSPosed', 'checkLSPosed'],
+  [integrity, 'checkTampering', 'checkTampering'],
+];
 
 describe('category wrapper modules delegate to the native HybridObject', () => {
-  it('root', async () => {
-    await expect(root.isRooted()).resolves.toBe(true);
-    expect(mockNativeSecurity.isRooted).toHaveBeenCalledTimes(1);
-
-    await expect(root.isMagiskDetected()).resolves.toBe(true);
-    expect(mockNativeSecurity.isMagiskDetected).toHaveBeenCalledTimes(1);
-
-    await expect(root.isBusyBoxDetected()).resolves.toBe(true);
-    expect(mockNativeSecurity.isBusyBoxDetected).toHaveBeenCalledTimes(1);
+  it.each(CHECKS)('%#: %s', async (module, exportName, nativeMethod) => {
+    const fn = module[exportName];
+    expect(fn).toBeDefined();
+    await expect(fn!()).resolves.toEqual(EXPECTED);
+    expect(mockNativeSecurity[nativeMethod]).toHaveBeenCalled();
   });
 
-  it('jailbreak', async () => {
-    await expect(jailbreak.isJailbroken()).resolves.toBe(true);
-    expect(mockNativeSecurity.isJailbroken).toHaveBeenCalledTimes(1);
+  it('integrity.checkApkIntegrity passes the expected hash through', async () => {
+    await expect(integrity.checkApkIntegrity('abc')).resolves.toEqual(EXPECTED);
+    expect(mockNativeSecurity.checkApkIntegrity).toHaveBeenCalledWith('abc');
   });
 
-  it('emulator', async () => {
-    await expect(emulator.isEmulator()).resolves.toBe(true);
-    expect(mockNativeSecurity.isEmulator).toHaveBeenCalledTimes(1);
+  it('signature.getSigningIdentity resolves the native identity', async () => {
+    await expect(signature.getSigningIdentity()).resolves.toBe('deadbeef');
   });
 
-  it('developerMode', async () => {
-    await expect(developerMode.isDeveloperModeEnabled()).resolves.toBe(true);
-    expect(mockNativeSecurity.isDeveloperModeEnabled).toHaveBeenCalledTimes(1);
-
-    await expect(developerMode.isUsbDebuggingEnabled()).resolves.toBe(true);
-    expect(mockNativeSecurity.isUsbDebuggingEnabled).toHaveBeenCalledTimes(1);
-
-    await expect(developerMode.isDebuggerAttached()).resolves.toBe(true);
-    expect(mockNativeSecurity.isDebuggerAttached).toHaveBeenCalledTimes(1);
-
-    await expect(developerMode.isMockLocationEnabled()).resolves.toBe(true);
-    expect(mockNativeSecurity.isMockLocationEnabled).toHaveBeenCalledTimes(1);
-  });
-
-  it('vpn', async () => {
-    await expect(vpn.isVpnConnected()).resolves.toBe(true);
-    expect(mockNativeSecurity.isVpnConnected).toHaveBeenCalledTimes(1);
-  });
-
-  it('proxy', async () => {
-    await expect(proxy.isProxyEnabled()).resolves.toBe(true);
-    expect(mockNativeSecurity.isProxyEnabled).toHaveBeenCalledTimes(1);
-  });
-
-  it('overlay', async () => {
-    await expect(overlay.hasOverlayPermission()).resolves.toBe(true);
-    expect(mockNativeSecurity.hasOverlayPermission).toHaveBeenCalledTimes(1);
-  });
-
-  it('screen', async () => {
-    await expect(screen.isScreenRecording()).resolves.toBe(true);
-    expect(mockNativeSecurity.isScreenRecording).toHaveBeenCalledTimes(1);
-
-    await expect(screen.isScreenCaptured()).resolves.toBe(true);
-    expect(mockNativeSecurity.isScreenCaptured).toHaveBeenCalledTimes(1);
-  });
-
-  it('hook', async () => {
-    await expect(hook.isHookDetected()).resolves.toBe(true);
-    expect(mockNativeSecurity.isHookDetected).toHaveBeenCalledTimes(1);
-
-    await expect(hook.isFridaDetected()).resolves.toBe(true);
-    expect(mockNativeSecurity.isFridaDetected).toHaveBeenCalledTimes(1);
-
-    await expect(hook.isXposedDetected()).resolves.toBe(true);
-    expect(mockNativeSecurity.isXposedDetected).toHaveBeenCalledTimes(1);
-
-    await expect(hook.isLSPosedDetected()).resolves.toBe(true);
-    expect(mockNativeSecurity.isLSPosedDetected).toHaveBeenCalledTimes(1);
-  });
-
-  it('integrity', async () => {
-    await expect(integrity.isTampered()).resolves.toBe(true);
-    expect(mockNativeSecurity.isTampered).toHaveBeenCalledTimes(1);
-
-    await expect(integrity.verifyApkIntegrity('abc')).resolves.toBe(true);
-    expect(mockNativeSecurity.verifyApkIntegrity).toHaveBeenCalledWith('abc');
-  });
-
-  it('signature', async () => {
-    await expect(signature.getAppSignatureHash()).resolves.toBe('deadbeef');
-    expect(mockNativeSecurity.getAppSignatureHash).toHaveBeenCalledTimes(1);
-
-    await expect(signature.verifyAppSignature('deadbeef')).resolves.toBe(true);
-    expect(mockNativeSecurity.verifyAppSignature).toHaveBeenCalledWith(
-      'deadbeef'
+  it('propagates a rejected native call instead of reporting a result', async () => {
+    mockNativeSecurity.checkVpn.mockRejectedValueOnce(
+      new Error('unsupported platform')
     );
-
-    const { matches, actual } = await signature.compareAppSignature('deadbeef');
-    expect(matches).toBe(true);
-    expect(actual).toBe('deadbeef');
-
-    const mismatch = await signature.compareAppSignature('not-the-hash');
-    expect(mismatch.matches).toBe(false);
-  });
-
-  it('ssl', async () => {
-    await expect(ssl.isSslPinningSupported()).resolves.toBe(true);
-    expect(mockNativeSecurity.isSslPinningSupported).toHaveBeenCalledTimes(1);
+    await expect(vpn.checkVpn()).rejects.toThrow('unsupported platform');
   });
 });

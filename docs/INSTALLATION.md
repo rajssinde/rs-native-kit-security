@@ -40,7 +40,7 @@ No manual Info.plist changes are required for the core detection APIs. Two optio
 
 Autolinking handles everything — no manual `MainApplication`/Gradle edits needed. The library declares two permissions in its own manifest, merged automatically into your app:
 
-- `android.permission.INTERNET` — used only for a local loopback socket probe against Frida's default ports (`isFridaDetected`/`isHookDetected`). Nearly every RN app already has this permission for networking.
+- `android.permission.INTERNET` — used only for a local loopback socket probe against Frida's default ports (`checkFrida`/`checkHooks`). Nearly every RN app already has this permission for networking.
 - `android.permission.ACCESS_NETWORK_STATE` — used for VPN/proxy transport checks.
 
 It also declares a `<queries>` block listing the specific root-manager, hooking-framework, emulator, mock-location and overlay apps it checks for. Android 11+ hides other installed apps unless they're declared this way. These are targeted `<package>` entries, not the restricted `QUERY_ALL_PACKAGES` permission, and they merge into your app's manifest automatically.

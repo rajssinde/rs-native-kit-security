@@ -1,14 +1,19 @@
-import { getNativeSecurity } from '../specs/nativeSecurity';
+import { runCheck } from '../specs/runCheck';
+import type { DetectionResult } from '../types';
 
 /**
- * Android: `MediaProjection`-adjacent heuristics + display capture flags.
- * iOS: `UIScreen.main.isCaptured`.
+ * iOS: `UIScreen.isCaptured` (recording, mirroring, AirPlay) — accurate.
+ * Android: presentation-display heuristic only (low confidence).
  */
-export function isScreenRecording(): Promise<boolean> {
-  return getNativeSecurity().isScreenRecording();
+export function checkScreenRecording(): Promise<DetectionResult> {
+  return runCheck((native) => native.checkScreenRecording());
 }
 
-/** Point-in-time "was a screenshot just taken" signal, driven by the event system. */
-export function isScreenCaptured(): Promise<boolean> {
-  return getNativeSecurity().isScreenCaptured();
+/**
+ * "Was a screenshot taken in the last ~5 seconds". Screenshots are only
+ * observed while monitoring runs (an `addListener()` subscription is active);
+ * without it the result is `not_detected` with `low` confidence.
+ */
+export function checkScreenCapture(): Promise<DetectionResult> {
+  return runCheck((native) => native.checkScreenCapture());
 }

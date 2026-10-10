@@ -49,33 +49,31 @@ final class JailbreakDetector {
     "SSLKillSwitch2"
   ]
 
-  func isJailbroken() -> Bool {
-    return !reasons().isEmpty
+  func check() -> NativeDetectionResult {
+    #if targetEnvironment(simulator)
+    // The Simulator runs on the Mac's filesystem (which has /usr/sbin/sshd,
+    // /usr/libexec/sftp-server, ...) without the device sandbox, so every
+    // signal here would fire. `checkEmulator()` already reports the Simulator.
+    return Detection.unsupported()
+    #else
+    return Detection.run { d in
+      d.signal("JAILBREAK_FILES", .high) { hasSuspiciousFiles() }
+      d.signal("CYDIA_URL_SCHEME", .medium) { canOpenCydiaUrlScheme() }
+      d.signal("SANDBOX_WRITE_ESCAPE", .high) { canWriteOutsideSandbox() }
+      d.signal("TWEAK_INJECTOR_DYLIB", .high) { DylibScanner.anyLoadedImageContains(dylibMarkers) }
+      #if !DEBUG
+      // Xcode sets DYLD_INSERT_LIBRARIES itself for sanitizers / debugging tools.
+      d.signal("DYLD_INSERT_LIBRARIES_SET", .medium) {
+        ProcessInfo.processInfo.environment["DYLD_INSERT_LIBRARIES"] != nil
+      }
+      #endif
+      d.signal("PROCESS_SPAWN_ALLOWED", .high) { canSpawnProcess() }
+    }
+    #endif
   }
 
-  func reasons() -> [String] {
-    var found: [String] = []
-
-    if hasSuspiciousFiles() {
-      found.append("jailbreak-associated file(s) found on disk")
-    }
-    if canOpenCydiaUrlScheme() {
-      found.append("device can open the cydia:// URL scheme")
-    }
-    if canWriteOutsideSandbox() {
-      found.append("app process can write outside its sandbox container")
-    }
-    if DylibScanner.anyLoadedImageContains(dylibMarkers) {
-      found.append("a jailbreak tweak injector dylib is loaded in-process")
-    }
-    if ProcessInfo.processInfo.environment["DYLD_INSERT_LIBRARIES"] != nil {
-      found.append("DYLD_INSERT_LIBRARIES environment variable is set")
-    }
-    if !isRunningOnSimulator() && canSpawnProcess() {
-      found.append("process spawn succeeded (sandbox restriction on process creation is lifted)")
-    }
-
-    return found
+  func isJailbroken() -> Bool {
+    check().isDetected
   }
 
   private func hasSuspiciousFiles() -> Bool {
@@ -111,14 +109,6 @@ final class JailbreakDetector {
       try? fm.removeItem(atPath: path)
     }
     return created
-  }
-
-  private func isRunningOnSimulator() -> Bool {
-    #if targetEnvironment(simulator)
-    return true
-    #else
-    return false
-    #endif
   }
 
   /// A jailbroken device's relaxed sandbox often allows spawning a new

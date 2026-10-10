@@ -1,10 +1,10 @@
-import { getNativeSecurity } from '../specs/nativeSecurity';
+import { runCheck } from '../specs/runCheck';
+import type { DetectionResult } from '../types';
 
 /**
- * Android-only: `Settings.canDrawOverlays()` + a running-services heuristic
- * for known overlay/screen-lock-bypass apps. iOS has no equivalent overlay
- * permission model and always resolves `false`.
+ * Android: this app's overlay permission and known overlay-abuse apps (both
+ * weak signals). iOS: `unsupported` — iOS has no overlay permission model.
  */
-export function hasOverlayPermission(): Promise<boolean> {
-  return getNativeSecurity().hasOverlayPermission();
+export function checkOverlay(): Promise<DetectionResult> {
+  return runCheck((native) => native.checkOverlay());
 }

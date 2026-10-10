@@ -7,13 +7,20 @@ import UIKit
 /// (`UIScreen.isCaptured` covers AirPlay mirroring, QuickTime recording,
 /// and in-app screen recording alike). Screenshot detection uses the
 /// real `userDidTakeScreenshotNotification` push notification, wired up by
-/// `SecurityMonitor`, which calls [markScreenshotDetected].
+/// `SecurityMonitor`, which calls `markScreenshotDetected` — so it can only
+/// observe anything while monitoring is running.
 final class ScreenMonitor {
 
   private static let recentScreenshotWindow: TimeInterval = 5.0
 
   private let lock = NSLock()
   private var lastScreenshotAt: Date?
+  private var observingScreenshots = false
+
+  var isObservingScreenshots: Bool {
+    get { lock.lock(); defer { lock.unlock() }; return observingScreenshots }
+    set { lock.lock(); observingScreenshots = newValue; lock.unlock() }
+  }
 
   func isScreenRecording() -> Bool {
     #if canImport(UIKit) && !os(watchOS)
@@ -28,11 +35,27 @@ final class ScreenMonitor {
     #endif
   }
 
-  func isScreenCaptured() -> Bool {
+  func checkScreenRecording() -> NativeDetectionResult {
+    Detection.run { d in
+      d.signal("SCREEN_CAPTURED", .high) { isScreenRecording() }
+    }
+  }
+
+  func checkScreenCapture() -> NativeDetectionResult {
     lock.lock()
-    defer { lock.unlock() }
-    guard let lastScreenshotAt else { return false }
-    return Date().timeIntervalSince(lastScreenshotAt) < Self.recentScreenshotWindow
+    let last = lastScreenshotAt
+    let observing = observingScreenshots
+    lock.unlock()
+
+    if let last, Date().timeIntervalSince(last) < Self.recentScreenshotWindow {
+      return NativeDetectionResult(status: .detected, reasons: ["SCREENSHOT_RECENT"], confidence: .medium, error: nil)
+    }
+    return NativeDetectionResult(
+      status: .notDetected,
+      reasons: [],
+      confidence: observing ? .medium : .low,
+      error: observing ? nil : "screenshot monitoring is not running; call addListener() to observe screenshots"
+    )
   }
 
   func markScreenshotDetected() {

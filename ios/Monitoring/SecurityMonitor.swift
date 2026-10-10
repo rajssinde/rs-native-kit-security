@@ -113,6 +113,7 @@ final class SecurityMonitor {
     }
 
     notificationObservers = [screenshotObserver, captureObserver]
+    screenMonitor.isObservingScreenshots = true
     #endif
   }
 
@@ -122,6 +123,7 @@ final class SecurityMonitor {
     notificationObservers.forEach { center.removeObserver($0) }
     #endif
     notificationObservers = []
+    screenMonitor.isObservingScreenshots = false
   }
 
   // MARK: - Polling
@@ -141,13 +143,13 @@ final class SecurityMonitor {
     }
     wasJailbroken = jailbroken
 
-    let hooked = hookDetector.isAnyHookDetected()
+    let hooked = hookDetector.checkHooks().isDetected
     if hooked && !wasHookDetected {
       emit("HOOK_DETECTED", "An instrumentation/hooking framework was detected")
     }
     wasHookDetected = hooked
 
-    let debugger = developerModeDetector.isDebuggerAttached()
+    let debugger = (try? developerModeDetector.isDebuggerAttached()) ?? false
     if debugger && !wasDebuggerAttached {
       emit("DEBUGGER", "A debugger attached to the app process")
     }

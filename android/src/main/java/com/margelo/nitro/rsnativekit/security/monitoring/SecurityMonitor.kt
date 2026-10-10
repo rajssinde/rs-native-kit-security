@@ -15,6 +15,7 @@ import com.margelo.nitro.rsnativekit.security.detectors.IntegrityChecker
 import com.margelo.nitro.rsnativekit.security.detectors.NetworkMonitor
 import com.margelo.nitro.rsnativekit.security.detectors.RootDetector
 import com.margelo.nitro.rsnativekit.security.detectors.ScreenMonitor
+import com.margelo.nitro.rsnativekit.security.detectors.isDetected
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
@@ -130,6 +131,7 @@ internal class SecurityMonitor(
         observer
       )
       screenshotObserver = observer
+      screenMonitor.isObservingScreenshots = true
     } catch (_: Exception) {
       screenshotObserver = null
     }
@@ -143,6 +145,7 @@ internal class SecurityMonitor(
       // no-op
     }
     screenshotObserver = null
+    screenMonitor.isObservingScreenshots = false
   }
 
   // --- Polled signals (no first-class Android push API) -------------------------------------
@@ -160,11 +163,11 @@ internal class SecurityMonitor(
 
   private fun pollOnce() {
     try {
-      val rooted = rootDetector.isRooted()
+      val rooted = rootDetector.check().isDetected
       if (rooted && !wasRooted) emit("ROOT_DETECTED", "Root access detected on this device")
       wasRooted = rooted
 
-      val hooked = hookDetector.isAnyHookDetected()
+      val hooked = hookDetector.checkHooks().isDetected
       if (hooked && !wasHookDetected) emit("HOOK_DETECTED", "An instrumentation/hooking framework was detected")
       wasHookDetected = hooked
 

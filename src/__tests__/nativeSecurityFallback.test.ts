@@ -16,10 +16,14 @@ describe('nativeSecurity web/default fallback', () => {
   it('every method throws SecurityUnsupportedPlatformError instead of silently reporting "secure"', async () => {
     const native = getNativeSecurity();
 
-    await expect(native.isRooted()).rejects.toThrow(
-      'isRooted" is not supported on this platform'
+    await expect(native.checkRoot()).rejects.toThrow(
+      'checkRoot" is not supported on this platform'
     );
-    await expect(native.scan()).rejects.toThrow('scan');
+    await expect(native.checkSignature([])).rejects.toThrow('checkSignature');
+    await expect(native.getSigningIdentity()).rejects.toThrow(
+      'getSigningIdentity'
+    );
+    await expect(native.scan({ expectedSigners: [] })).rejects.toThrow('scan');
     expect(() => native.setEventListener(() => {})).toThrow('setEventListener');
     expect(() => native.startMonitoring()).toThrow('startMonitoring');
     expect(() => native.stopMonitoring()).toThrow('stopMonitoring');

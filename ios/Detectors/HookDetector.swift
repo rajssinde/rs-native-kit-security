@@ -1,10 +1,9 @@
 import Foundation
 
-/// Frida is the dominant iOS instrumentation framework in practice (Xposed/
-/// LSPosed/Substrate are Android-only concepts), so hook detection here
-/// focuses on Frida's well-known fingerprints: its default `frida-server`
-/// listen port, injected dylibs, and its `DYLD_INSERT_LIBRARIES` injection
-/// vector.
+/// Frida is the dominant iOS instrumentation framework in practice, so its
+/// fingerprints get their own check: its default `frida-server` listen port,
+/// injected dylibs, and its `DYLD_INSERT_LIBRARIES` injection vector. The
+/// `hooks` umbrella adds the jailbreak hooking frameworks tweaks run on.
 final class HookDetector {
 
   private let fridaDefaultPorts: [UInt16] = [27042, 27043]
@@ -15,24 +14,35 @@ final class HookDetector {
     "frida-helper"
   ]
 
-  func isFridaDetected() -> Bool {
-    return hasFridaPortOpen() || DylibScanner.anyLoadedImageContains(fridaDylibMarkers) || hasFridaEnvironmentVariable()
+  /// Function-hooking runtimes that jailbreak tweaks inject into apps.
+  private let hookingFrameworkMarkers = [
+    "MobileSubstrate",
+    "CydiaSubstrate",
+    "SubstrateLoader",
+    "libhooker",
+    "libsubstitute",
+    "libellekit",
+    "ElleKit"
+  ]
+
+  func checkFrida() -> NativeDetectionResult {
+    Detection.run { d in
+      d.signal("FRIDA_DYLIB", .high) { DylibScanner.anyLoadedImageContains(fridaDylibMarkers) }
+      d.signal("FRIDA_DYLD_INSERT", .high) {
+        ProcessInfo.processInfo.environment["DYLD_INSERT_LIBRARIES"]?
+          .localizedCaseInsensitiveContains("frida") == true
+      }
+      // Something listening on Frida's default ports — frida-server may also use custom ports.
+      d.signal("FRIDA_PORT_OPEN", .medium) { fridaDefaultPorts.contains { isPortOpen(port: $0) } }
+    }
   }
 
-  /// Umbrella check — kept distinct from `isFridaDetected` so the API stays
-  /// consistent with Android's `isHookDetected`, even though Frida is
-  /// currently the only iOS-relevant framework this SDK fingerprints.
-  func isAnyHookDetected() -> Bool {
-    return isFridaDetected()
-  }
-
-  private func hasFridaEnvironmentVariable() -> Bool {
-    return ProcessInfo.processInfo.environment["DYLD_INSERT_LIBRARIES"]?
-      .localizedCaseInsensitiveContains("frida") == true
-  }
-
-  private func hasFridaPortOpen() -> Bool {
-    return fridaDefaultPorts.contains { port in isPortOpen(port: port) }
+  /// Umbrella check: Frida plus the jailbreak hooking frameworks.
+  func checkHooks(frida: NativeDetectionResult? = nil) -> NativeDetectionResult {
+    Detection.run { d in
+      d.include(frida ?? checkFrida())
+      d.signal("HOOKING_FRAMEWORK_DYLIB", .high) { DylibScanner.anyLoadedImageContains(hookingFrameworkMarkers) }
+    }
   }
 
   private func isPortOpen(port: UInt16, host: String = "127.0.0.1", timeoutMs: Int = 200) -> Bool {

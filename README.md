@@ -22,9 +22,9 @@ If you're evaluating a **React Native root detection library**, a **jailbreak de
 - **Network monitoring:** VPN and proxy detection.
 - **Screen monitoring:** screen recording/mirroring, screenshot detection.
 - **Overlay exposure** (Android).
-- **Integrity:** app signature hash + verification, APK integrity (Android), tamper heuristics.
+- **Integrity:** signer verification (Android signing-certificate SHA-256, iOS Team ID from the code signature), APK integrity (Android), tamper heuristics.
 - **SSL pinning helpers:** typed certificate-pin builder/validator utilities.
-- **Device risk engine:** configurable weighted scoring → `LOW` / `MEDIUM` / `HIGH` / `CRITICAL`.
+- **Device risk engine:** configurable weighted scoring → `LOW` / `MEDIUM` / `HIGH` / `CRITICAL`. Failed checks fail closed; related findings aren't double-counted.
 - **Real-time event system:** subscribe to root/jailbreak/VPN/proxy/screenshot/hook/debugger/tamper events as they happen.
 
 ## Installation
@@ -40,12 +40,19 @@ npm install @rs-native-kit/security react-native-nitro-modules
 ```ts
 import Security from '@rs-native-kit/security';
 
-const rooted = await Security.isRooted();
-const jailbroken = await Security.isJailbroken();
-const report = await Security.scan();
+Security.configure({
+  expectedSigners: { android: ['<signing cert SHA-256>'], ios: ['<Team ID>'] },
+});
 
+const report = await Security.scan();
 console.log(report.riskLevel, report.score, report.secure);
+console.log(report.detected, report.reasons); // e.g. ['root'], ['SU_BINARY_FOUND']
+
+const frida = await Security.checkFrida();
+// { status: 'detected' | 'not_detected' | 'unsupported' | 'not_configured' | 'error', reasons, confidence }
 ```
+
+Every check reports one of five statuses, so a check that couldn't run, or that has nothing configured to verify against, is never mistaken for a clean result.
 
 ```ts
 const unsubscribe = Security.addListener((event) => {
@@ -71,7 +78,7 @@ See the [API reference](docs/API.md) for the full surface and [Examples](docs/EX
 - **Nitro Modules, not hand-written TurboModules.** Nitro is a JSI-based, New-Architecture-only module system: synchronous-capable, strongly-typed, no bridge serialization. It satisfies the intent behind "TurboModules/Fabric support" better than a manual TurboModule codegen would for a module with no native UI component (Fabric doesn't apply here — there's nothing to render).
 - **One native `Security` HybridObject**, composed internally from focused detector classes (`RootDetector`, `EmulatorDetector`, `HookDetector`, ... — see `android/src/main/java/.../detectors` and `ios/Detectors`), so the native code stays modular without multiplying JS↔native bridge objects.
 - **The risk engine lives in TypeScript** (`src/risk/`), not native — native `scan()` returns raw `checks`/`reasons`, and the JS-side `RiskEngine` computes `score`/`riskLevel`/`secure` from configurable weights/thresholds. This lets you tune scoring without a native rebuild.
-- **Every category is independently importable**: `import { isRooted } from '@rs-native-kit/security/root'`-style trees under `src/{root,jailbreak,emulator,...}`, so bundlers can tree-shake unused checks.
+- **Every check is a named export** (`import { checkRoot } from '@rs-native-kit/security'`), organised by category under `src/{root,jailbreak,emulator,...}`.
 
 ## Example app
 

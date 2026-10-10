@@ -17,6 +17,19 @@ Initial implementation of the enterprise security SDK.
 - Enterprise dashboard example app (security score, per-check grid, live event log, refresh button).
 - Full documentation set: Installation, API Reference, Examples, Migration Guide, Security Notes, FAQ, Troubleshooting, Best Practices.
 
+### Changed (breaking, before first release)
+
+- Every check returns a `DetectionResult` (`status`: `detected` / `not_detected` / `unsupported` / `not_configured` / `error`, plus reason codes and confidence) instead of a boolean. A check that fails to run, doesn't apply to the platform, or has nothing configured to verify against can no longer read as clean. Methods are renamed `isX()` → `checkX()` so old boolean call sites fail to compile instead of silently misbehaving.
+- `scan()` reports `detected`, `failed`, `notConfigured` and `complete`; `secure` additionally requires every check to have run. Reasons are machine-readable codes (`describeReason()` for display text) and are no longer duplicated.
+- Signature verification is configured once via `configure({ expectedSigners })` and checked by `scan()`; `checks.signature` is `not_configured` until then (previously it always claimed a valid signature). Replaces `verifyAppSignature`/`getAppSignatureHash` with `checkSignature`/`getSigningIdentity`.
+- iOS signature verification compares the Team ID read from the app's own code signature, replacing the hash of the provisioning profile / `CodeResources`, which changed on every profile renewal or build.
+- Android signature verification uses the current signer, so apps that rotated their signing key no longer read as mismatched; hashes are accepted as hex, `:`-separated hex or base64.
+- Risk engine: failed checks fail closed (`failedCheckPenalty`, default 1); related checks (`hooks`/`frida`/`xposed`/`lsposed`, `root`/`magisk`/`busybox`) are grouped so one finding isn't counted twice.
+- Unknown native event types are dropped instead of being reported as `TAMPER`.
+- Removed `isSslPinningSupported()` (always `true`) and `compareAppSignature()`.
+- Android: `su` is no longer executed during root detection — it popped a superuser prompt on rooted devices.
+- iOS: proxy detection includes PAC (auto-config) proxies; `DYLD_INSERT_LIBRARIES` is ignored in debug builds, where Xcode sets it itself.
+
 ### Fixed
 
 - Android: `isRooted()` reported `true` on almost every device — shell probes like `which su` now count as failed when the command exits non-zero. Shell output is also drained concurrently, so long output (e.g. `getprop`) no longer stalls a check until it times out.

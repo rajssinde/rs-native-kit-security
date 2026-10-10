@@ -19,13 +19,15 @@ It is **not** designed to stop a well-resourced, targeted attacker who staticall
 
 ## What "zero-config" checks can and can't tell you
 
-- `scan()`'s `signatureValid` is always `true` in the default, zero-config call — there is no "known good" hash to compare against without you supplying one. **Call `verifyAppSignature(expectedHash)` with a hash you pin at build time for an authoritative signature check.**
-- `isTampered()` is a heuristic (a debuggable, sideloaded, or development-signed *release* build; always `false` in debug builds), not a cryptographic guarantee. It will not catch a competently repackaged app re-signed with a valid certificate — see [Integrity checks](#integrity-checks) below.
+- Without `configure({ expectedSigners })`, `scan()` reports `checks.signature` as `not_configured` and lists it in `report.notConfigured` — it never claims a signature it didn't verify is valid. **Configure expected signers for every production build.**
+- A check that fails to run reports `status: 'error'`. `scan()` lists it in `failed`, sets `complete: false`, makes `secure` false, and by default scores it like a detection (`failedCheckPenalty`, fail closed).
+- `not_detected` is at most `medium` confidence: on-device checks can be hidden from. Treat it as absence of evidence, not evidence of safety.
+- `checkTampering()` is a heuristic (a debuggable, sideloaded, or development-signed *release* build; `unsupported` in debug builds), not a cryptographic guarantee. It will not catch a competently repackaged app re-signed with a valid certificate — see [Integrity checks](#integrity-checks) below.
 
 ## Integrity checks
 
-- **Android** reads the real signing certificate via `PackageManager` (`GET_SIGNING_CERTIFICATES`), so `getAppSignatureHash()`/`verifyAppSignature()` are a genuine cryptographic fingerprint of the installed APK's signer.
-- **iOS has no equivalent runtime API.** Apple's Code Signing Services (`SecStaticCodeCheckValidity` and friends) are **macOS-only** — they don't exist in the iOS SDK at all, and there's no other public API to read your own signing certificate from inside a running iOS app (by design — the OS enforces code signing before your code ever executes, so it doesn't need to expose a re-verification API to you). This SDK's iOS `getAppSignatureHash()` hashes the embedded provisioning profile (Development/Ad Hoc/Enterprise builds) or the bundle's `CodeResources` manifest (App Store builds) as a practical fingerprint of "did this exact build's signing identity change" — it is **not** cryptographic proof of signature validity the way the Android check is. For a hard iOS integrity guarantee, use App Attest.
+- **Android** reads the current signing certificate via `PackageManager` (`GET_SIGNING_CERTIFICATES`, current signers, so key rotation is handled), so `checkSignature()` compares a genuine fingerprint of the installed APK's signer. With Play App Signing, the expected value is Google's app-signing key from the Play Console, not your upload key.
+- **iOS has no API for an app to read its own signing certificate**, and App Store binaries are re-signed with Apple's certificate, so a certificate hash would be identical for every App Store app. What does identify who built the app is the **Team ID** in the signed entitlements of the app's own code signature (`application-identifier` = `TEAMID.bundle.id`) — re-signing an IPA under another account changes it. `checkSignature()` parses that from the app binary's `LC_CODE_SIGNATURE` and compares it to the Team IDs you configure. It's a strong local signal, but an attacker who patches the comparison defeats it; for a guarantee the device can't fake, use App Attest.
 
 ## Event system: push vs. poll
 
@@ -41,7 +43,7 @@ Everything else (`ROOT_DETECTED`, `JAILBREAK_DETECTED`, `HOOK_DETECTED`, `DEBUGG
 
 ## Platform asymmetry is intentional, not a bug
 
-Several checks are meaningful on one platform and hard-coded `false`/`true` on the other (`isRooted`/`isJailbroken`, `hasOverlayPermission`, `isXposedDetected`, etc. — see the [API reference](API.md) table). This SDK never fabricates a plausible-looking answer for a concept that doesn't exist on a platform; it reports the honest "not applicable" value instead of guessing.
+Several checks are meaningful on only one platform (`checkRoot`/`checkJailbreak`, `checkOverlay`, `checkXposed`, etc. — see the [API reference](API.md) table). On the other platform they report `status: 'unsupported'` rather than a plausible-looking `false`, and never add to the risk score.
 
 ## Web/unsupported platforms
 

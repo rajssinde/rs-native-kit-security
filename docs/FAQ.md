@@ -12,15 +12,19 @@ No. Nitro Modules requires the New Architecture. [Migrate to the New Architectur
 
 The example app's `yarn example web` target exists to preview the **dashboard UI** with `react-native-web`/Vite — it is not a supported detection target. Every detection method throws `SecurityUnsupportedPlatformError` on web rather than pretending the device is secure (see [Security Notes](SECURITY_NOTES.md#web-unsupported-platforms)). Only Android and iOS are real targets.
 
-### Why does `isTampered()` always return `false` on my debug build?
+### Why does `checkTampering()` report `unsupported` on my debug build?
 
 By design. Its zero-config symptoms (Android: `FLAG_DEBUGGABLE` or no installer package; iOS: the `get-task-allow` development entitlement) are normal for every local debug build, so they're only evaluated in release builds. The library is compiled with your app's build type (Android `BuildConfig.DEBUG`, iOS CocoaPods `DEBUG` flag), so this follows your app's configuration automatically. If you use custom iOS build configurations (e.g. `Staging`), map them in your Podfile (`project 'App', 'Staging' => :debug` or `:release`) so the pod is compiled to match.
 
-Note that a release build installed with `adb install` (Android) reports `true`, because it has no installer package — the same symptom a sideloaded, repackaged APK has. For a non-heuristic check, use `verifyAppSignature()`/`verifyApkIntegrity()` with a hash you pin at build time.
+Note that a release build installed with `adb install` (Android) reports `detected` (`NO_INSTALLER_RECORDED`), because it has no installer package — the same symptom a sideloaded, repackaged APK has. For a stronger check, configure expected signers (`configure({ expectedSigners })`) so `checkSignature()` and `scan()` verify who signed the app.
 
-### Why is `isRooted()` always `false` on iOS (and `isJailbroken()` always `false` on Android)?
+### Why is `checkRoot()` `unsupported` on iOS (and `checkJailbreak()` `unsupported` on Android)?
 
-Root and jailbreak are platform-specific concepts. Rather than mapping one onto the other (which every "cross-platform" library that exposes a single `isCompromised()` boolean effectively does, hiding which check actually ran), this SDK keeps them honest and separate. Use `scan()`'s `checks.root`/`checks.jailbreak` if you want a single object to inspect regardless of platform.
+Root and jailbreak are platform-specific concepts. Rather than mapping one onto the other (which every "cross-platform" library that exposes a single `isCompromised()` boolean effectively does, hiding which check actually ran), this SDK keeps them honest and separate — and says `unsupported` rather than a misleading `false`. Use `scan()`'s `detected` list if you want one answer regardless of platform.
+
+### Why does `not_detected` never have `high` confidence?
+
+Because every on-device check can be hidden from: Magisk DenyList, Shamiko, jailbreak bypass tweaks, or a patched binary can all make a compromised device look clean. A `detected` result is strong evidence; a `not_detected` result is the absence of evidence. That asymmetry is why your backend should combine this SDK with platform attestation.
 
 ### How accurate is emulator detection?
 
