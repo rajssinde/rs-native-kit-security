@@ -126,6 +126,20 @@ export interface Security extends HybridObject<{
   /** Android: signing certificate SHA-256 (lowercase hex). iOS: Team ID from the code signature. */
   getSigningIdentity(): Promise<string>;
 
+  // --- Protection ------------------------------------------------------------------
+
+  /**
+   * Android: `FLAG_SECURE` on every activity (screenshots/recordings black,
+   * hidden in recents). iOS: covers the app while the screen is captured and
+   * in the app switcher. Resolves whether protection is active.
+   */
+  setScreenCaptureProtection(enabled: boolean): Promise<boolean>;
+  /**
+   * Android: hides other apps' overlays while this app is in front (12+) and
+   * drops touches through overlays. iOS: resolves `false` (no overlays).
+   */
+  setOverlayProtection(enabled: boolean): Promise<boolean>;
+
   // --- Attestation: Play Integrity (Android) -----------------------------------------
   // Each method rejects on the other platform.
 

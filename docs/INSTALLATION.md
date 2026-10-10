@@ -25,16 +25,23 @@ yarn add @rs-native-kit/security react-native-nitro-modules
 cd ios && pod install
 ```
 
-No manual Info.plist changes are required for the core detection APIs. Two optional entries improve accuracy:
+No manual Info.plist changes are required for the core detection APIs. One optional entry improves accuracy:
 
-- **Cydia URL scheme detection** (one of several jailbreak signals): add `cydia` to `LSApplicationQueriesSchemes` in `Info.plist`. Without it, `canOpenURL` for `cydia://` always returns `false` (iOS 9+ policy), so this specific signal is silently skipped — the other jailbreak checks (file scan, sandbox-escape test, dylib inspection, process-spawn probe) still run.
+- **Jailbreak app URL schemes** (one of several jailbreak signals): list them under `LSApplicationQueriesSchemes`. Without it, `canOpenURL` always returns `false` for them (iOS 9+ policy), so this specific signal (`JAILBREAK_URL_SCHEME`) is silently skipped — the other jailbreak checks (file scans, symlink checks, sandbox-escape test, dylib inspection, process-spawn probe) still run.
 
   ```xml
   <key>LSApplicationQueriesSchemes</key>
   <array>
     <string>cydia</string>
+    <string>sileo</string>
+    <string>zbra</string>
+    <string>filza</string>
+    <string>undecimus</string>
+    <string>activator</string>
   </array>
   ```
+
+For App Attest, add the **App Attest** capability — see [Attestation](ATTESTATION.md#ios-app-attest).
 
 ## 3. Android
 
@@ -42,6 +49,12 @@ Autolinking handles everything — no manual `MainApplication`/Gradle edits need
 
 - `android.permission.INTERNET` — used only for a local loopback socket probe against Frida's default ports (`checkFrida`/`checkHooks`). Nearly every RN app already has this permission for networking.
 - `android.permission.ACCESS_NETWORK_STATE` — used for VPN/proxy transport checks.
+- `android.permission.DETECT_SCREEN_CAPTURE` (Android 14+) and `DETECT_SCREEN_RECORDING` (Android 15+) — the OS screenshot and screen-recording callbacks behind `SCREENSHOT`/`SCREEN_RECORDING` events.
+- `android.permission.HIDE_OVERLAY_WINDOWS` (Android 12+) — used by `setOverlayProtection()`.
+
+All of these are *normal* install-time permissions: no runtime prompt, and no Play policy declaration. Remove any you don't want with `tools:node="remove"` in your app manifest; the corresponding feature then degrades gracefully.
+
+On Android 13 and below, `SCREENSHOT` events come from `MediaStore` and are only reported once the new image is confirmed to be a screenshot, which requires your app to hold media read permission (`READ_MEDIA_IMAGES` / `READ_EXTERNAL_STORAGE`). This SDK doesn't request it; without it, screenshots on those versions aren't reported (rather than reporting every new photo).
 
 It also declares a `<queries>` block listing the specific root-manager, hooking-framework, emulator, mock-location and overlay apps it checks for. Android 11+ hides other installed apps unless they're declared this way. These are targeted `<package>` entries, not the restricted `QUERY_ALL_PACKAGES` permission, and they merge into your app's manifest automatically.
 

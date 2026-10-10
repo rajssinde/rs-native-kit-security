@@ -23,6 +23,12 @@ final class DeveloperModeDetector {
   func checkDebugger() -> NativeDetectionResult {
     Detection.run { d in
       d.signal("PTRACE_TRACED", .high) { try isDebuggerAttached() }
+      #if !targetEnvironment(simulator)
+      // Apps launched from the home screen are children of launchd (pid 1);
+      // launched by debugserver/Xcode, they're its child instead. Catches a
+      // debugger that hid P_TRACED.
+      d.signal("PARENT_NOT_LAUNCHD", .medium) { getppid() != 1 }
+      #endif
     }
   }
 

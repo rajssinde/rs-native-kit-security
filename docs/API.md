@@ -151,6 +151,15 @@ type SecurityEventType =
 
 Native monitoring starts on the first `addListener()` call and stops automatically once the last listener unsubscribes. `SCREENSHOT`/`SCREEN_RECORDING`/`VPN_CONNECTED` (and more) are driven by real OS push notifications where the platform provides one; everything else is re-evaluated on a ~4s poll and only fires on a false→true transition (see [Security Notes](SECURITY_NOTES.md#event-system-push-vs-poll)). Unknown native event types are dropped, never remapped to another threat. `SIGNATURE_INVALID` is reserved and not emitted yet.
 
+## Protection
+
+| Method | Android | iOS |
+|---|---|---|
+| `setScreenCaptureProtection(enabled)` | `FLAG_SECURE` on every activity: screenshots/recordings black, hidden in recents | Covers the app while the screen is recorded/mirrored and in the app switcher (screenshots can't be blocked on iOS) |
+| `setOverlayProtection(enabled)` | Hides other apps' overlays (12+) and drops touches through overlays | Resolves `false` — no overlays on iOS |
+
+Both resolve whether protection is now active and stay applied, across activity recreation, until disabled.
+
 ## Attestation
 
 | Method | Android | iOS | Notes |

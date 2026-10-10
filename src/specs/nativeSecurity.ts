@@ -88,6 +88,10 @@ class UnsupportedSecurity implements Security {
   ): Promise<NativeDetectionResult> => this.failAsync('checkApkIntegrity');
   getSigningIdentity = (): Promise<string> =>
     this.failAsync('getSigningIdentity');
+  setScreenCaptureProtection = (_enabled: boolean): Promise<boolean> =>
+    this.failAsync('setScreenCaptureProtection');
+  setOverlayProtection = (_enabled: boolean): Promise<boolean> =>
+    this.failAsync('setOverlayProtection');
   prepareIntegrityToken = (_cloudProjectNumber: number): Promise<void> =>
     this.failAsync('prepareIntegrityToken');
   requestIntegrityToken = (_requestData: string): Promise<string> =>

@@ -53,3 +53,18 @@ describe('attestation', () => {
     );
   });
 });
+
+describe('protection', () => {
+  const protection = require('../protection');
+
+  it('passes the enabled flag through and resolves whether protection is active', async () => {
+    await expect(protection.setScreenCaptureProtection(true)).resolves.toBe(
+      true
+    );
+    expect(mockNativeSecurity.setScreenCaptureProtection).toHaveBeenCalledWith(
+      true
+    );
+    await expect(protection.setOverlayProtection(false)).resolves.toBe(true);
+    expect(mockNativeSecurity.setOverlayProtection).toHaveBeenCalledWith(false);
+  });
+});

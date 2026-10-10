@@ -103,6 +103,17 @@ internal object ShellUtils {
    */
   fun readFile(path: String): String = File(path).readText()
 
+  /**
+   * Reads a `/proc` file through the hook-resistant native path when the
+   * native library is loaded, else through Java. Throws if unreadable.
+   */
+  fun readProcFile(path: String): String {
+    if (NativeChecks.isAvailable) {
+      return NativeChecks.read(path) ?: throw IllegalStateException("$path unreadable")
+    }
+    return readFile(path)
+  }
+
   /** Reads a whole file as text, or `null` on any failure (missing, unreadable, SELinux-denied, ...). */
   fun readFileOrNull(path: String): String? {
     return try {

@@ -7,6 +7,7 @@ import android.os.Process
 import android.provider.Settings
 import com.margelo.nitro.rsnativekit.security.NativeConfidence
 import com.margelo.nitro.rsnativekit.security.NativeDetectionResult
+import com.margelo.nitro.rsnativekit.security.util.ShellUtils
 
 internal class DeveloperModeDetector(private val context: Context) {
 
@@ -22,10 +23,17 @@ internal class DeveloperModeDetector(private val context: Context) {
     }
   }
 
-  /** Java (JDWP) debugger attach detection — independent of any RN/JS debugger. */
+  /**
+   * Java (JDWP) debuggers, plus native debuggers and ptrace-based
+   * instrumentation (gdb, lldb, strace, Frida's injector while attaching),
+   * which show up as a non-zero `TracerPid`. Independent of any RN/JS debugger.
+   */
   fun checkDebugger(): NativeDetectionResult = Detection.run {
     signal("JDWP_DEBUGGER_ATTACHED", NativeConfidence.HIGH) {
       Debug.isDebuggerConnected() || Debug.waitingForDebugger()
+    }
+    signal("TRACER_PID_ATTACHED", NativeConfidence.HIGH) {
+      tracerPid(ShellUtils.readProcFile("/proc/self/status")) != 0
     }
   }
 
@@ -45,4 +53,11 @@ internal class DeveloperModeDetector(private val context: Context) {
       KnownPackages.isAnyInstalled(context.packageManager, KnownPackages.MOCK_LOCATION_APPS)
     }
   }
+}
+
+/** `TracerPid` from a `/proc/<pid>/status` dump: 0 when no tracer is attached. */
+internal fun tracerPid(status: String): Int {
+  val line = status.lineSequence().firstOrNull { it.startsWith("TracerPid:") }
+    ?: throw IllegalStateException("no TracerPid line in /proc/self/status")
+  return line.substringAfter(':').trim().toInt()
 }

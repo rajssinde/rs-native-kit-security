@@ -18,6 +18,7 @@ class Security: HybridSecuritySpec {
   private let screenMonitor = ScreenMonitor()
   private let integrityChecker = IntegrityChecker()
   private let appAttest = AppAttest()
+  private let screenShield = ScreenShield()
 
   private let listenerLock = NSLock()
   private var eventListener: ((NativeSecurityEvent) -> Void)?
@@ -101,6 +102,22 @@ class Security: HybridSecuritySpec {
 
   func getSigningIdentity() throws -> Promise<String> {
     Promise.parallel { [integrityChecker] in try integrityChecker.getSigningIdentity() }
+  }
+
+  // MARK: - Protection
+
+  func setScreenCaptureProtection(enabled: Bool) throws -> Promise<Bool> {
+    let promise = Promise<Bool>()
+    DispatchQueue.main.async { [screenShield] in
+      screenShield.setEnabled(enabled)
+      promise.resolve(withResult: enabled)
+    }
+    return promise
+  }
+
+  /// iOS has no third-party overlay windows to defend against.
+  func setOverlayProtection(enabled: Bool) throws -> Promise<Bool> {
+    Promise.resolved(withResult: false)
   }
 
   // MARK: - Attestation

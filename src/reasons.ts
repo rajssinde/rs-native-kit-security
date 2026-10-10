@@ -7,6 +7,8 @@
 export const REASON_DESCRIPTIONS: Readonly<Record<string, string>> = {
   // Root (Android)
   SU_BINARY_FOUND: 'An `su` binary is present on the device',
+  SU_BINARY_FOUND_NATIVE:
+    'An `su` binary is present (found by a raw system call that bypasses hooks)',
   TEST_KEYS_BUILD:
     'The OS build is signed with test keys (custom or developer ROM)',
   DANGEROUS_BUILD_PROPS:
@@ -23,7 +25,10 @@ export const REASON_DESCRIPTIONS: Readonly<Record<string, string>> = {
 
   // Jailbreak (iOS)
   JAILBREAK_FILES: 'Jailbreak-associated files are present',
-  CYDIA_URL_SCHEME: 'The device can open the cydia:// URL scheme',
+  JAILBREAK_URL_SCHEME:
+    'A jailbreak package manager or tool is installed (its URL scheme opens)',
+  SYMLINKED_SYSTEM_DIRECTORY:
+    'A system directory has been replaced with a symlink',
   SANDBOX_WRITE_ESCAPE: 'The app can write outside its sandbox',
   TWEAK_INJECTOR_DYLIB:
     'A jailbreak tweak injector library is loaded in the app',
@@ -45,6 +50,10 @@ export const REASON_DESCRIPTIONS: Readonly<Record<string, string>> = {
   ADB_ENABLED: 'USB debugging (ADB) is enabled',
   JDWP_DEBUGGER_ATTACHED: 'A Java debugger is attached to the app',
   PTRACE_TRACED: 'A debugger is attached to the app process',
+  PARENT_NOT_LAUNCHD:
+    'The app was launched by a debugger or tool rather than the home screen',
+  TRACER_PID_ATTACHED:
+    'A native debugger or ptrace-based tool is attached to the app process',
   MOCK_LOCATION_APPOP: 'This app is set as the mock-location provider',
   MOCK_LOCATION_APP_INSTALLED: 'A fake-GPS app is installed',
   SIMULATED_LOCATION: 'The last location fix was simulated by software',
@@ -63,6 +72,7 @@ export const REASON_DESCRIPTIONS: Readonly<Record<string, string>> = {
   PRESENTATION_DISPLAY:
     'A secondary presentation display is attached (possible mirroring)',
   SCREEN_CAPTURED: 'The screen is being recorded or mirrored',
+  SCREEN_RECORDING_VISIBLE: 'The app is visible in an active screen recording',
   SCREENSHOT_RECENT: 'A screenshot was taken in the last few seconds',
   OVERLAY_PERMISSION_GRANTED: 'This app can draw over other apps',
   OVERLAY_ABUSE_APP: 'An app known to abuse screen overlays is installed',
@@ -71,8 +81,12 @@ export const REASON_DESCRIPTIONS: Readonly<Record<string, string>> = {
   FRIDA_IN_MEMORY_MAPS: 'Frida libraries are mapped into the app',
   FRIDA_THREAD: 'A Frida thread is running in the app',
   FRIDA_GLIB_THREAD: 'GLib threads typical of Frida are running in the app',
+  FRIDA_FILE_DESCRIPTOR: 'The app holds a Frida pipe or socket open',
+  FILE_API_HOOKED:
+    'File APIs are hooked to hide root or instrumentation files from the app',
   FRIDA_PORT_OPEN: "Something is listening on Frida's default port",
   FRIDA_DYLIB: 'A Frida library is loaded in the app',
+  FRIDA_SYMBOL: 'Frida agent code is loaded in the app',
   FRIDA_DYLD_INSERT: 'Frida is being injected via DYLD_INSERT_LIBRARIES',
   HOOKING_FRAMEWORK_DYLIB: 'A function-hooking framework is loaded in the app',
   XPOSED_BRIDGE_CLASS: 'Xposed classes are loaded in the app',

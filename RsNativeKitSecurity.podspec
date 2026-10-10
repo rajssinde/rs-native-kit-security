@@ -15,9 +15,11 @@ Pod::Spec.new do |s|
 
   s.source_files = [
     "ios/**/*.{swift}",
-    "ios/**/*.{m,mm}",
+    "ios/**/*.{h,m,mm}",
     "cpp/**/*.{hpp,cpp}",
   ]
+  # Visible to the pod's Swift code via its module (raw-syscall probes).
+  s.public_header_files = ["ios/Native/*.h"]
   s.exclude_files = "ios/Tests/**/*"
 
   s.dependency 'React-jsi'

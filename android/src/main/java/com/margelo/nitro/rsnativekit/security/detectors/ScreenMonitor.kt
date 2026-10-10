@@ -32,7 +32,17 @@ internal class ScreenMonitor(private val context: Context) {
   @Volatile
   var isObservingScreenshots = false
 
+  /**
+   * Android 15+: whether this app is visible in an active screen recording,
+   * as reported by the OS while monitoring runs; `null` when unknown.
+   */
+  @Volatile
+  var isVisibleInRecording: Boolean? = null
+
   fun checkScreenRecording(): NativeDetectionResult = Detection.run {
+    isVisibleInRecording?.let { visible ->
+      signal("SCREEN_RECORDING_VISIBLE", NativeConfidence.HIGH) { visible }
+    }
     signal("PRESENTATION_DISPLAY", NativeConfidence.LOW) {
       val displayManager = context.getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager
         ?: throw IllegalStateException("DisplayManager unavailable")

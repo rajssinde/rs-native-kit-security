@@ -1,10 +1,13 @@
 package com.margelo.nitro.rsnativekit.security
 
+import android.app.Application
 import android.os.SystemClock
 import com.facebook.proguard.annotations.DoNotStrip
 import com.margelo.nitro.NitroModules
 import com.margelo.nitro.core.Promise
 import com.margelo.nitro.rsnativekit.security.attestation.PlayIntegrity
+import com.margelo.nitro.rsnativekit.security.platform.ActivityTracker
+import com.margelo.nitro.rsnativekit.security.platform.ScreenProtection
 import com.margelo.nitro.rsnativekit.security.detectors.BusyBoxDetector
 import com.margelo.nitro.rsnativekit.security.detectors.Detection
 import com.margelo.nitro.rsnativekit.security.detectors.DeveloperModeDetector
@@ -50,6 +53,10 @@ class Security : HybridSecuritySpec() {
   private val screenMonitor by lazy { ScreenMonitor(context) }
   private val integrityChecker by lazy { IntegrityChecker(context) }
   private val playIntegrity by lazy { PlayIntegrity(context) }
+  private val activities by lazy {
+    ActivityTracker(context.applicationContext as Application, context.currentActivity)
+  }
+  private val screenProtection by lazy { ScreenProtection(activities) }
 
   @Volatile
   private var eventListener: ((NativeSecurityEvent) -> Unit)? = null
@@ -62,7 +69,8 @@ class Security : HybridSecuritySpec() {
       integrityChecker = integrityChecker,
       networkMonitor = networkMonitor,
       screenMonitor = screenMonitor,
-      developerModeDetector = developerModeDetector
+      developerModeDetector = developerModeDetector,
+      activities = activities
     ) { event ->
       eventListener?.invoke(NativeSecurityEvent(event.type, event.message, event.timestamp))
     }
@@ -132,6 +140,16 @@ class Security : HybridSecuritySpec() {
   private fun appAttestUnavailable() =
     UnsupportedOperationException("App Attest is iOS-only; use Play Integrity on Android")
 
+  override fun setScreenCaptureProtection(enabled: Boolean): Promise<Boolean> = Promise.parallel {
+    screenProtection.setCaptureProtection(enabled)
+    true
+  }
+
+  override fun setOverlayProtection(enabled: Boolean): Promise<Boolean> = Promise.parallel {
+    screenProtection.setOverlayProtection(enabled)
+    true
+  }
+
   override fun scan(options: NativeScanOptions): Promise<NativeScanResult> = Promise.parallel {
     val startedAt = SystemClock.elapsedRealtime()
 
@@ -145,6 +163,7 @@ class Security : HybridSecuritySpec() {
         include(xposed)
         include(lsposed)
         include(hookDetector.checkSubstrateOrRiru())
+        include(hookDetector.checkFileApiHooks())
       }
     }
 

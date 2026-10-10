@@ -4,6 +4,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   View,
 } from 'react-native';
@@ -131,6 +132,17 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [events, setEvents] = useState<SecurityEvent[]>([]);
+  const [protectedScreen, setProtectedScreen] = useState(false);
+
+  const toggleProtection = useCallback((enabled: boolean) => {
+    setProtectedScreen(enabled);
+    Promise.all([
+      Security.setScreenCaptureProtection(enabled),
+      Security.setOverlayProtection(enabled),
+    ]).catch((err: unknown) =>
+      setError(err instanceof Error ? err.message : String(err))
+    );
+  }, []);
 
   const runScan = useCallback(() => {
     setLoading(true);
@@ -212,6 +224,18 @@ export default function App() {
           )}
         </>
       )}
+
+      <Text style={styles.sectionTitle}>Protection</Text>
+      <View style={styles.protectionCard}>
+        <View style={styles.checkText}>
+          <Text style={styles.checkLabel}>Protect this screen</Text>
+          <Text style={styles.checkDetail}>
+            Blocks screenshots/recording (Android), covers the app while
+            captured (iOS), and blocks overlay tapjacking (Android).
+          </Text>
+        </View>
+        <Switch value={protectedScreen} onValueChange={toggleProtection} />
+      </View>
 
       <Text style={styles.sectionTitle}>Live security events</Text>
       <View style={styles.eventsCard}>
@@ -374,6 +398,13 @@ const styles = StyleSheet.create({
   reasonText: {
     color: '#374151',
     marginBottom: 6,
+  },
+  protectionCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   eventsCard: {
     backgroundColor: '#ffffff',

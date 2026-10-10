@@ -3,6 +3,7 @@ package com.margelo.nitro.rsnativekit.security.detectors
 import android.content.Context
 import com.margelo.nitro.rsnativekit.security.NativeConfidence
 import com.margelo.nitro.rsnativekit.security.NativeDetectionResult
+import com.margelo.nitro.rsnativekit.security.util.NativeChecks
 import com.margelo.nitro.rsnativekit.security.util.ShellUtils
 import java.io.File
 
@@ -31,7 +32,9 @@ internal class MagiskDetector(private val context: Context) {
     signal("MAGISK_APP", NativeConfidence.MEDIUM) {
       KnownPackages.isInstalled(context.packageManager, KnownPackages.MAGISK)
     }
-    signal("MAGISK_FILES", NativeConfidence.HIGH) { magiskPaths.any { File(it).exists() } }
+    signal("MAGISK_FILES", NativeConfidence.HIGH) {
+      magiskPaths.any { File(it).exists() || (NativeChecks.isAvailable && NativeChecks.exists(it)) }
+    }
     signal("MAGISK_BINARY", NativeConfidence.HIGH) {
       ShellUtils.binaryExistsOnCommonPaths("magisk") || ShellUtils.exec(arrayOf("magisk", "-v")) != null
     }
@@ -45,7 +48,7 @@ internal class MagiskDetector(private val context: Context) {
    * (an empty, unmounted directory on stock devices).
    */
   private fun hasMagiskMounts(): Boolean {
-    val mountInfo = ShellUtils.readFile("/proc/self/mountinfo")
+    val mountInfo = ShellUtils.readProcFile("/proc/self/mountinfo")
     return mountInfo.lineSequence().any { line ->
       // mountinfo: <id> <parent> <major:minor> <root> <mount point> <options> ... - <fstype> <source> ...
       val fields = line.split(' ')

@@ -35,11 +35,15 @@ Real OS push sources (accurate, event-driven, no polling latency):
 
 | Event | Android | iOS |
 |---|---|---|
-| `SCREENSHOT` | `MediaStore` `ContentObserver` | `UIApplication.userDidTakeScreenshotNotification` |
-| `SCREEN_RECORDING` | — (polled) | `UIScreen.capturedDidChangeNotification` |
+| `SCREENSHOT` | Android 14+: `Activity.ScreenCaptureCallback`. Older: `MediaStore` observer, confirmed screenshots only (needs media read permission) | `UIApplication.userDidTakeScreenshotNotification` |
+| `SCREEN_RECORDING` | Android 15+: `WindowManager` screen-recording callback. Older: not available | `UIScreen.capturedDidChangeNotification` |
 | `VPN_CONNECTED` / `PROXY_ENABLED` | `ConnectivityManager.NetworkCallback` | — (polled) |
 
 Everything else (`ROOT_DETECTED`, `JAILBREAK_DETECTED`, `HOOK_DETECTED`, `DEBUGGER`, `TAMPER`) is re-evaluated on a ~4-second poll and only emitted on a false→true transition, because Android/iOS don't expose a push API for "root state changed" or "a debugger just attached." A 4-second detection latency is the tradeoff for not running detection logic continuously on a tight loop (battery/CPU).
+
+## Hook-resistant probes
+
+Root- and jailbreak-hiding tools work by hooking the APIs an app uses to look at the system: `java.io.File`, `FileManager`, and libc's `access`/`stat`/`open`. On arm64 this SDK also probes files with **raw system calls** (`svc` on Android, `svc #0x80` on iOS), which none of those hooks see. It also reads `/proc` the same way on Android. When a raw probe finds something the regular API claims isn't there, the result is `FILE_API_HOOKED`: proof a hiding tool is active, often stronger evidence than the file itself. Kernel-level hiding (e.g. Magisk mount namespaces, KernelSU) can still defeat this.
 
 ## Platform asymmetry is intentional, not a bug
 

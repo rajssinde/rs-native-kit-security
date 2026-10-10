@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Build
 import com.margelo.nitro.rsnativekit.security.NativeConfidence
 import com.margelo.nitro.rsnativekit.security.NativeDetectionResult
+import com.margelo.nitro.rsnativekit.security.util.NativeChecks
 import com.margelo.nitro.rsnativekit.security.util.ShellUtils
 
 /**
@@ -28,6 +29,10 @@ internal class RootDetector(private val context: Context) {
       ShellUtils.binaryExistsOnCommonPaths("su") ||
         ShellUtils.binaryExistsOnPath("su") ||
         ShellUtils.exec(arrayOf("which", "su")) != null
+    }
+    // Same probe below the Java and libc layers that root-hiding tools hook.
+    signal("SU_BINARY_FOUND_NATIVE", NativeConfidence.HIGH) {
+      ShellUtils.COMMON_BIN_PATHS.any { NativeChecks.exists("${it}su") }
     }
     signal("TEST_KEYS_BUILD", NativeConfidence.LOW) { Build.TAGS?.contains("test-keys") == true }
     signal("DANGEROUS_BUILD_PROPS", NativeConfidence.MEDIUM) { hasDangerousBuildProps() }
@@ -64,7 +69,7 @@ internal class RootDetector(private val context: Context) {
    * mounts like `/mnt/vendor/persist` or `/data/vendor`.
    */
   private fun hasReadWriteSystemMount(): Boolean {
-    val mountInfo = ShellUtils.readFile("/proc/self/mountinfo")
+    val mountInfo = ShellUtils.readProcFile("/proc/self/mountinfo")
     return mountInfo.lineSequence().any { line ->
       // mountinfo: <id> <parent> <major:minor> <root> <mount point> <options> ...
       val fields = line.split(' ')

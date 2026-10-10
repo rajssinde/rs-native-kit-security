@@ -49,9 +49,23 @@ The default weights (`src/risk/weights.ts`) are a reasonable starting point, not
 
 A rooted developer's own test device, a legitimate VPN app, or a corporate MDM-managed phone can all trigger individual `MEDIUM`-weighted checks without being a threat. Reserve hard blocks for `CRITICAL`, and use `HIGH`/`MEDIUM` for step-up auth or backend flagging rather than an outright deny — see [Examples](EXAMPLES.md#risk-based-step-up-authentication).
 
-## Combine with `FLAG_SECURE` (Android) / disable screenshots on sensitive screens
+## Protect sensitive screens, don't just detect capture
 
-`checkScreenRecording()`/`checkScreenCapture()` are *detection*, not *prevention*. Pair them with `WindowManager.LayoutParams.FLAG_SECURE` (Android) on screens showing card numbers, balances, or credentials — that actually blocks capture, rather than just reporting it after the fact. iOS has no equivalent "block capture" API; detection + reactive blurring (on `SCREENSHOT`/`SCREEN_RECORDING` events) is the best available mitigation there.
+`checkScreenRecording()`/`checkScreenCapture()` are *detection*. On screens showing card numbers, balances or credentials, turn on prevention:
+
+```ts
+useFocusEffect(useCallback(() => {
+  Security.setScreenCaptureProtection(true);
+  Security.setOverlayProtection(true);
+  return () => {
+    Security.setScreenCaptureProtection(false);
+    Security.setOverlayProtection(false);
+  };
+}, []));
+```
+
+- **Android:** `FLAG_SECURE` makes screenshots and recordings come out black and blanks the app in recents. Overlay protection hides other apps' overlays and drops touches through them (tapjacking).
+- **iOS:** there's no API to block screenshots. The app is covered while the screen is recorded or mirrored and in the app-switcher snapshot. Pair it with a reaction to `SCREENSHOT` events (e.g. warn, log, or invalidate a displayed one-time code).
 
 ## Keep the library updated
 

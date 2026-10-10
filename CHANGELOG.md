@@ -23,6 +23,18 @@ Initial implementation of the enterprise security SDK.
 - `@rs-native-kit/security-server` (`server/`): zero-dependency Node 20+ verifier. App Attest attestation and assertion verification against the pinned Apple root (chain, nonce, key ID, App ID, counter, environment); Play Integrity decoding via a service account and policy evaluation with per-requirement failure codes; single-use challenge store. Tested against real OpenSSL-built certificate chains and ECDSA signatures, plus mutation checks.
 - [Attestation guide](docs/ATTESTATION.md).
 
+- Hook-resistant probes: raw-syscall file checks and `/proc` reads (Android arm64 `svc`, C++/JNI; iOS arm64 `svc #0x80`) that bypass Java/FileManager and libc hooks, plus `FILE_API_HOOKED` when they disagree with the regular APIs.
+- Android debugger detection via `/proc/self/status` `TracerPid` (native debuggers, ptrace tools); iOS via parent process (`PARENT_NOT_LAUNCHD`).
+- Frida: open pipe/socket scan (Android), thread names and agent symbols (iOS).
+- iOS rootless jailbreaks (Dopamine, palera1n: `/var/jb`, `/cores/binpack`, ...), symlinked system directories, more package-manager URL schemes, and jailbreak-hiding tweak libraries (Shadow, A-Bypass, FlyJB, ...).
+- `setScreenCaptureProtection()` (Android `FLAG_SECURE`; iOS cover while captured / in app switcher) and `setOverlayProtection()` (Android overlay hiding + touch filtering).
+- Android 14+ screenshot callbacks and Android 15+ screen-recording callbacks; `SCREEN_RECORDING` events on Android.
+
+### Fixed (pre-existing)
+
+- Android: older-Android `SCREENSHOT` events fired for every new image (camera photos, downloads); they now require a confirmed screenshot.
+- Android: the library ran React Native codegen over the repo's `node_modules/react-native`, compiling RN core specs into the library and breaking release builds with duplicate classes; codegen is now scoped to `src/`.
+
 ### Changed (breaking, before first release)
 
 - Every check returns a `DetectionResult` (`status`: `detected` / `not_detected` / `unsupported` / `not_configured` / `error`, plus reason codes and confidence) instead of a boolean. A check that fails to run, doesn't apply to the platform, or has nothing configured to verify against can no longer read as clean. Methods are renamed `isX()` → `checkX()` so old boolean call sites fail to compile instead of silently misbehaving.

@@ -3,7 +3,10 @@ package com.margelo.nitro.rsnativekit.security.detectors
 import android.content.Context
 import com.margelo.nitro.rsnativekit.security.NativeConfidence
 import com.margelo.nitro.rsnativekit.security.NativeDetectionResult
+import com.margelo.nitro.rsnativekit.security.util.NativeChecks
 import com.margelo.nitro.rsnativekit.security.util.ShellUtils
+import android.system.ErrnoException
+import android.system.Os
 import java.io.File
 import java.net.ConnectException
 import java.net.InetSocketAddress
@@ -23,12 +26,14 @@ internal class HookDetector(private val context: Context) {
 
   fun checkFrida(): NativeDetectionResult = Detection.run {
     signal("FRIDA_IN_MEMORY_MAPS", NativeConfidence.HIGH) {
-      val maps = ShellUtils.readFile("/proc/self/maps")
+      val maps = ShellUtils.readProcFile("/proc/self/maps")
       listOf("frida-agent", "frida-gadget", "gum-js-loop", "linjector").any { maps.contains(it) }
     }
     signal("FRIDA_THREAD", NativeConfidence.HIGH) { hasThreadNamed("gum-js-loop", "frida") }
     // GLib threads that frida-agent spawns; rarely present in a normal Android app.
     signal("FRIDA_GLIB_THREAD", NativeConfidence.MEDIUM) { hasThreadNamed("gmain", "gdbus") }
+    // Pipes/sockets frida's injector and agent hold open in the target process.
+    signal("FRIDA_FILE_DESCRIPTOR", NativeConfidence.HIGH) { hasFileDescriptorMatching("linjector", "frida") }
     // Something listening on Frida's default ports — frida-server may also use custom ports.
     signal("FRIDA_PORT_OPEN", NativeConfidence.MEDIUM) { fridaDefaultPorts.any { isLoopbackPortOpen(it) } }
   }
@@ -43,6 +48,19 @@ internal class HookDetector(private val context: Context) {
       false
     } catch (_: SocketTimeoutException) {
       false
+    }
+  }
+
+  private fun hasFileDescriptorMatching(vararg markers: String): Boolean {
+    val descriptors = File("/proc/self/fd").listFiles()
+      ?: throw IllegalStateException("/proc/self/fd unreadable")
+    return descriptors.any { fd ->
+      val target = try {
+        Os.readlink(fd.path)
+      } catch (_: ErrnoException) {
+        return@any false // closed between listing and reading
+      }
+      markers.any { target.contains(it) }
     }
   }
 
@@ -104,7 +122,27 @@ internal class HookDetector(private val context: Context) {
     signal("SUBSTRATE_FILES", NativeConfidence.HIGH) { File("/data/data/com.saurik.substrate").exists() }
     signal("RIRU_FILES", NativeConfidence.HIGH) { riruPaths.any { File(it).exists() } }
     signal("SUBSTRATE_IN_MEMORY_MAPS", NativeConfidence.HIGH) {
-      ShellUtils.readFile("/proc/self/maps").contains("libsubstrate")
+      ShellUtils.readProcFile("/proc/self/maps").contains("libsubstrate")
+    }
+  }
+
+  // --- Hooked file APIs ---------------------------------------------------------
+
+  /** Root/instrumentation artefacts hiding tools try to make invisible to Java. */
+  private val hiddenArtefactPaths = ShellUtils.COMMON_BIN_PATHS.map { "${it}su" } + listOf(
+    "/sbin/.magisk",
+    "/system/bin/magisk",
+    "/debug_ramdisk/magisk",
+    "/system/framework/XposedBridge.jar"
+  )
+
+  /**
+   * A path the raw-syscall probe sees but `java.io.File` doesn't can only mean
+   * the Java file API is hooked to hide it — itself proof of instrumentation.
+   */
+  fun checkFileApiHooks(): NativeDetectionResult = Detection.run {
+    signal("FILE_API_HOOKED", NativeConfidence.HIGH) {
+      hiddenArtefactPaths.any { NativeChecks.exists(it) && !File(it).exists() }
     }
   }
 
@@ -114,6 +152,7 @@ internal class HookDetector(private val context: Context) {
     include(checkXposed())
     include(checkLSPosed())
     include(checkSubstrateOrRiru())
+    include(checkFileApiHooks())
   }
 
   private fun isClassPresent(className: String): Boolean {

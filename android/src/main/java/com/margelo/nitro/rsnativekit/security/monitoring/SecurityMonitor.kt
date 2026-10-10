@@ -1,14 +1,10 @@
 package com.margelo.nitro.rsnativekit.security.monitoring
 
 import android.content.Context
-import android.database.ContentObserver
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
-import android.os.Handler
-import android.os.Looper
-import android.provider.MediaStore
 import com.margelo.nitro.rsnativekit.security.detectors.DeveloperModeDetector
 import com.margelo.nitro.rsnativekit.security.detectors.HookDetector
 import com.margelo.nitro.rsnativekit.security.detectors.IntegrityChecker
@@ -16,6 +12,8 @@ import com.margelo.nitro.rsnativekit.security.detectors.NetworkMonitor
 import com.margelo.nitro.rsnativekit.security.detectors.RootDetector
 import com.margelo.nitro.rsnativekit.security.detectors.ScreenMonitor
 import com.margelo.nitro.rsnativekit.security.detectors.isDetected
+import com.margelo.nitro.rsnativekit.security.platform.ActivityTracker
+import com.margelo.nitro.rsnativekit.security.platform.ScreenCaptureWatcher
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
@@ -39,6 +37,7 @@ internal class SecurityMonitor(
   private val networkMonitor: NetworkMonitor,
   private val screenMonitor: ScreenMonitor,
   private val developerModeDetector: DeveloperModeDetector,
+  private val activities: ActivityTracker,
   private val onEvent: (SecurityMonitorEvent) -> Unit
 ) {
   companion object {
@@ -48,7 +47,7 @@ internal class SecurityMonitor(
   private val isRunning = AtomicBoolean(false)
   private var executor: ScheduledExecutorService? = null
   private var networkCallback: ConnectivityManager.NetworkCallback? = null
-  private var screenshotObserver: ContentObserver? = null
+  private var screenCaptureWatcher: ScreenCaptureWatcher? = null
 
   // Last known state, to only emit on rising edges.
   private var wasVpnConnected = false
@@ -115,37 +114,31 @@ internal class SecurityMonitor(
     networkCallback = null
   }
 
-  // --- Screenshots (real push via MediaStore ContentObserver) -----------------------------
+  // --- Screenshots / screen recording (OS push; see ScreenCaptureWatcher) -------------
 
   private fun registerScreenshotObserver() {
-    val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
-      override fun onChange(selfChange: Boolean) {
+    val watcher = ScreenCaptureWatcher(
+      context = context,
+      activities = activities,
+      onScreenshot = {
         screenMonitor.markScreenshotDetected()
         emit("SCREENSHOT", "A screenshot was captured")
+      },
+      onRecordingChanged = { visible ->
+        val wasVisible = screenMonitor.isVisibleInRecording == true
+        screenMonitor.isVisibleInRecording = visible
+        if (visible && !wasVisible) emit("SCREEN_RECORDING", "The app is visible in a screen recording")
       }
-    }
-    try {
-      context.contentResolver.registerContentObserver(
-        MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-        true,
-        observer
-      )
-      screenshotObserver = observer
-      screenMonitor.isObservingScreenshots = true
-    } catch (_: Exception) {
-      screenshotObserver = null
-    }
+    )
+    screenMonitor.isObservingScreenshots = watcher.start()
+    screenCaptureWatcher = watcher
   }
 
   private fun unregisterScreenshotObserver() {
-    val observer = screenshotObserver ?: return
-    try {
-      context.contentResolver.unregisterContentObserver(observer)
-    } catch (_: Exception) {
-      // no-op
-    }
-    screenshotObserver = null
+    screenCaptureWatcher?.stop()
+    screenCaptureWatcher = null
     screenMonitor.isObservingScreenshots = false
+    screenMonitor.isVisibleInRecording = null
   }
 
   // --- Polled signals (no first-class Android push API) -------------------------------------

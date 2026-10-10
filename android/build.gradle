@@ -36,6 +36,14 @@ apply from: '../nitrogen/generated/android/rsnativekit_security+autolinking.grad
 
 apply plugin: "com.facebook.react"
 
+// This is a Nitro module: no TurboModule specs to codegen. Without a jsRootDir the
+// React Native plugin scans this repo's node_modules/react-native and compiles all
+// of RN core's specs into the library, which then collide with the app's copies
+// (duplicate com.facebook.fbreact.specs.* classes in release builds).
+react {
+  jsRootDir = file("../src")
+}
+
 android {
   namespace "com.margelo.nitro.rsnativekit.security"
 

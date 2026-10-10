@@ -34,6 +34,7 @@ import { checkScreenRecording, checkScreenCapture } from './screen';
 import { checkHooks, checkFrida, checkXposed, checkLSPosed } from './hook';
 import { checkTampering, checkApkIntegrity } from './integrity';
 import { checkSignature, getSigningIdentity } from './signature';
+import { setScreenCaptureProtection, setOverlayProtection } from './protection';
 import {
   prepareIntegrityToken,
   requestIntegrityToken,
@@ -206,6 +207,8 @@ export {
   isDetected,
   describeReason,
   REASON_DESCRIPTIONS,
+  setScreenCaptureProtection,
+  setOverlayProtection,
   prepareIntegrityToken,
   requestIntegrityToken,
   isAppAttestSupported,
@@ -257,6 +260,8 @@ const Security = {
   getSigningIdentity,
   isDetected,
   describeReason,
+  setScreenCaptureProtection,
+  setOverlayProtection,
   prepareIntegrityToken,
   requestIntegrityToken,
   isAppAttestSupported,
