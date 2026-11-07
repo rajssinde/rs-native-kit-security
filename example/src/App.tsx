@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Pressable,
   ScrollView,
+  StatusBar,
   StyleSheet,
   Switch,
   Text,
@@ -174,7 +175,14 @@ export default function App() {
   }, []);
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={[
+        styles.content,
+        { paddingTop: 16 + (StatusBar.currentHeight ?? 0) },
+      ]}
+      contentInsetAdjustmentBehavior="automatic"
+    >
       <View style={styles.header}>
         <Text style={styles.title}>Security Dashboard</Text>
         <Pressable
