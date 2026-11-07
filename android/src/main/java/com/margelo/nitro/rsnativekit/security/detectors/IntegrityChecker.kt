@@ -11,6 +11,7 @@ import com.margelo.nitro.rsnativekit.security.NativeDetectionResult
 import com.margelo.nitro.rsnativekit.security.NativeDetectionStatus
 import java.io.File
 import java.security.MessageDigest
+import java.util.zip.ZipFile
 
 /**
  * Signature/APK integrity + a zero-config tamper heuristic.
@@ -41,6 +42,15 @@ internal class IntegrityChecker(private val context: Context) {
       // repackaged APK is installed. Store, MDM and Firebase App Distribution installs all
       // record an installer package.
       signal("NO_INSTALLER_RECORDED", NativeConfidence.MEDIUM) { getInstallerPackageName().isNullOrBlank() }
+      // LSPatch embeds Xposed modules by repackaging the APK: it swaps in its own
+      // AppComponentFactory and stores the original APK under assets/lspatch/. Works on
+      // unrooted devices, so the root and Xposed checks never see it.
+      signal("LSPATCH_REPACKAGED", NativeConfidence.HIGH) {
+        val factory = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) context.applicationInfo.appComponentFactory else null
+        isLsPatchFactory(factory) || ZipFile(context.applicationInfo.sourceDir).use { apk ->
+          apk.entries().asSequence().any { isLsPatchEntry(it.name) }
+        }
+      }
     }
   }
 
@@ -137,3 +147,10 @@ internal class IntegrityChecker(private val context: Context) {
 
   private fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it) }
 }
+
+/** LSPatch's stub factory (`org.lsposed.lspatch.metaloader.LSPAppComponentFactoryStub`). */
+internal fun isLsPatchFactory(appComponentFactory: String?): Boolean =
+  appComponentFactory?.startsWith("org.lsposed.lspatch.") == true
+
+/** LSPatch keeps the original APK and its module config under `assets/lspatch/`. */
+internal fun isLsPatchEntry(name: String): Boolean = name.startsWith("assets/lspatch/")

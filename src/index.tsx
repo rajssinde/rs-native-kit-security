@@ -38,6 +38,7 @@ import { setScreenCaptureProtection, setOverlayProtection } from './protection';
 import {
   prepareIntegrityToken,
   requestIntegrityToken,
+  requestKeyAttestation,
   isAppAttestSupported,
   generateAppAttestKey,
   attestAppAttestKey,
@@ -212,6 +213,7 @@ export {
   setOverlayProtection,
   prepareIntegrityToken,
   requestIntegrityToken,
+  requestKeyAttestation,
   isAppAttestSupported,
   generateAppAttestKey,
   attestAppAttestKey,
@@ -267,6 +269,7 @@ const Security = {
   setOverlayProtection,
   prepareIntegrityToken,
   requestIntegrityToken,
+  requestKeyAttestation,
   isAppAttestSupported,
   generateAppAttestKey,
   attestAppAttestKey,

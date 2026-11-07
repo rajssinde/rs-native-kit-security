@@ -3,6 +3,7 @@ package com.margelo.nitro.rsnativekit.security.detectors
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.net.Uri
 import com.margelo.nitro.rsnativekit.security.NativeConfidence
 import com.margelo.nitro.rsnativekit.security.NativeDetectionResult
 import java.net.NetworkInterface
@@ -30,14 +31,21 @@ internal class NetworkMonitor(private val context: Context) {
   }
 
   fun checkProxy(): NativeDetectionResult = Detection.run {
+    // JVM-wide proxies, set by the app, an SDK, or a hook that wants traffic routed elsewhere.
     signal("SYSTEM_PROXY_PROPERTY", NativeConfidence.HIGH) {
-      !System.getProperty("http.proxyHost").isNullOrEmpty() &&
-        !System.getProperty("http.proxyPort").isNullOrEmpty()
+      JVM_PROXY_HOST_PROPERTIES.any { !System.getProperty(it).isNullOrEmpty() }
     }
     signal("NETWORK_PROXY", NativeConfidence.HIGH) {
       !connectivityManager.defaultProxy?.host.isNullOrEmpty()
+    }
+    // Proxy auto-config (PAC) can route traffic through a proxy just as well.
+    signal("PAC_PROXY", NativeConfidence.MEDIUM) {
+      val pac = connectivityManager.defaultProxy?.pacFileUrl
+      pac != null && pac != Uri.EMPTY && pac.toString().isNotEmpty()
     }
   }
 
   fun isProxyEnabled(): Boolean = checkProxy().isDetected
 }
+
+private val JVM_PROXY_HOST_PROPERTIES = listOf("http.proxyHost", "https.proxyHost", "socksProxyHost")

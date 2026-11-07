@@ -137,6 +137,10 @@ class Security: HybridSecuritySpec {
     Promise.rejected(withError: DetectionError("Play Integrity is Android-only; use App Attest on iOS"))
   }
 
+  func requestKeyAttestation(challenge: String) throws -> Promise<[String]> {
+    Promise.rejected(withError: DetectionError("Key Attestation is Android-only; use App Attest on iOS"))
+  }
+
   func isAppAttestSupported() throws -> Promise<Bool> {
     Promise.resolved(withResult: appAttest.isSupported())
   }

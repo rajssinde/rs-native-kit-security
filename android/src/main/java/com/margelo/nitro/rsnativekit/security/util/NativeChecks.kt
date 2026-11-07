@@ -26,6 +26,15 @@ internal object NativeChecks {
     return readFile(path)
   }
 
+  /** System property value, `""` when unset. */
+  fun property(name: String): String {
+    check(isAvailable) { "native checks unavailable" }
+    return readProperty(name)
+  }
+
+  @JvmStatic
+  private external fun readProperty(name: String): String
+
   @JvmStatic
   private external fun pathExists(path: String): Boolean
 

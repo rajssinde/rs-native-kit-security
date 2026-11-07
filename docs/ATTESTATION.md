@@ -1,4 +1,4 @@
-# Attestation (Play Integrity & App Attest)
+# Attestation (Play Integrity, Key Attestation & App Attest)
 
 On-device checks (`scan()`) run inside the app, so an attacker who controls the device can patch them to report "clean". **Platform attestation can't be faked that way:** Google (Play Integrity) or Apple (App Attest) sign a statement about the app and device, and **your server** verifies it. Use attestation as the trust anchor for sensitive operations, and the on-device checks as supplementary signal.
 
@@ -57,6 +57,40 @@ if (!verdict.ok) return deny(verdict.failures); // e.g. ['DEVICE_INTEGRITY_INSUF
 ```
 
 `verdict.failures` lists every unmet requirement (`REQUEST_HASH_MISMATCH`, `TOKEN_STALE`, `APP_NOT_RECOGNIZED`, `CERTIFICATE_MISMATCH`, `DEVICE_INTEGRITY_INSUFFICIENT`, `APP_NOT_LICENSED`, `PACKAGE_MISMATCH`), so you can choose a softer response (step-up auth) for some of them.
+
+## Android: Key Attestation
+
+Play Integrity tells you what Google concluded about the device. Key Attestation gives you the raw evidence from the phone's secure hardware: whether the **bootloader is locked** and the OS passed **verified boot**. That state is signed inside the TEE or StrongBox, so Magisk, KernelSU, APatch and hiding modules such as Shamiko can't change it. Almost every Android root needs an unlocked bootloader. It needs no Google Cloud setup and works on sideloaded builds too.
+
+```ts
+const challenge = await api.getChallenge(); // at most 128 bytes
+const certificateChain = await Security.requestKeyAttestation(challenge);
+await api.post('/attest/android', { challenge, certificateChain });
+```
+
+```ts
+// Server
+import { fetchKeyAttestationRevocations, verifyKeyAttestation } from '@rs-native-kit/security-server';
+
+let revoked = await fetchKeyAttestationRevocations(); // refresh at least every 24 h
+
+if (!(await challenges.consume(challenge))) return deny('CHALLENGE_INVALID');
+const verdict = verifyKeyAttestation({
+  certificateChain,
+  challenge,
+  packageName: 'com.example.app',
+  certificateSha256Digests: [process.env.APP_SIGNING_CERT_SHA256!],
+  revokedSerials: revoked,
+});
+if (!verdict.ok) return deny(verdict.failures); // e.g. ['BOOTLOADER_UNLOCKED', 'BOOT_STATE_NOT_VERIFIED']
+```
+
+The verifier **throws** when the chain can't be trusted at all: `UNTRUSTED_CHAIN` (not signed by Google's pinned hardware roots, or a forged leaf signed with a genuine device key), `CERT_REVOKED`, `CERT_EXPIRED`, `CHALLENGE_MISMATCH`, `MALFORMED`. Otherwise it returns the attested state, plus `failures` for every unmet requirement: `NOT_HARDWARE_BACKED`, `BOOTLOADER_UNLOCKED`, `BOOT_STATE_NOT_VERIFIED`, `PACKAGE_MISMATCH`, `CERTIFICATE_MISMATCH`. A missing root of trust counts as unlocked and unverified.
+
+- **The revocation list is required.** In practice Key Attestation is forged with a *leaked* device key ("keybox") and a module that replays it, such as TrickyStore. Google revokes leaked keys in its status list. A stale list lets those through, so refresh it, and combine Key Attestation with Play Integrity for high-value operations.
+- **`verifiedBootState: 'SelfSigned'`** means a relocked custom OS (e.g. GrapheneOS). The device is locked but not running the manufacturer's OS. It's reported as `BOOT_STATE_NOT_VERIFIED`, so decide whether to accept it.
+- **Package name and signing digests** are reported by Android, not the secure hardware, so they're only as trustworthy as the OS. A locked, verified boot is what makes them trustworthy.
+- Emulators produce software-only chains signed by Google's *test* CA. They fail with `UNTRUSTED_CHAIN`, as they should.
 
 ## iOS: App Attest
 
@@ -120,6 +154,6 @@ Failures throw `AttestationError` with a stable `code`.
 
 ## What attestation does and doesn't prove
 
-- **Proves:** the request came from your genuine, unmodified app (as distributed by Play / signed by your team), and, for Play Integrity, that the device passes Google's integrity checks.
+- **Proves:** the request came from your genuine, unmodified app (as distributed by Play / signed by your team), and, for Play Integrity, that the device passes Google's integrity checks. Key Attestation proves the bootloader and verified-boot state reported by the device's secure hardware, unless that device's key has leaked and Google hasn't yet revoked it.
 - **Doesn't prove:** that the person using the app is legitimate, or that the device is free of all malware. Keep authentication, authorization and fraud scoring on the server.
 - **Availability:** both services can be unavailable (no Google Play services, old iOS, quota limits, network errors). Decide your fallback per operation: deny, step up authentication, or allow with reduced limits. Don't silently skip verification.

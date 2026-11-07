@@ -84,6 +84,10 @@ export function createMockNativeSecurity(
     enableSslPinning: jest.fn(async (_d: unknown) => undefined),
     prepareIntegrityToken: jest.fn(async (_n: number) => undefined),
     requestIntegrityToken: jest.fn(async (_d: string) => 'integrity-token'),
+    requestKeyAttestation: jest.fn(async (_c: string) => [
+      'leaf',
+      'intermediate',
+    ]),
     isAppAttestSupported: jest.fn(async () => true),
     generateAppAttestKey: jest.fn(async () => 'key-id'),
     attestAppAttestKey: jest.fn(

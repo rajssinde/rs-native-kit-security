@@ -99,6 +99,8 @@ class UnsupportedSecurity implements Security {
     this.failAsync('prepareIntegrityToken');
   requestIntegrityToken = (_requestData: string): Promise<string> =>
     this.failAsync('requestIntegrityToken');
+  requestKeyAttestation = (_challenge: string): Promise<string[]> =>
+    this.failAsync('requestKeyAttestation');
   isAppAttestSupported = (): Promise<boolean> =>
     this.failAsync('isAppAttestSupported');
   generateAppAttestKey = (): Promise<string> =>

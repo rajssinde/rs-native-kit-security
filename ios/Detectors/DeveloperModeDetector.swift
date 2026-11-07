@@ -28,6 +28,13 @@ final class DeveloperModeDetector {
       // launched by debugserver/Xcode, they're its child instead. Catches a
       // debugger that hid P_TRACED.
       d.signal("PARENT_NOT_LAUNCHD", .medium) { getppid() != 1 }
+      // The kernel's own record that a debugger attached, read with a raw
+      // csops syscall: survives the debugger detaching or clearing P_TRACED.
+      d.signal("CODE_SIGNING_DEBUGGED", .high) {
+        let flags = rs_raw_cs_status()
+        guard flags >= 0 else { throw DetectionError("csops(CS_OPS_STATUS) failed") }
+        return flags & csDebugged != 0
+      }
       #endif
     }
   }
@@ -77,3 +84,6 @@ final class DeveloperModeDetector {
     Thread.isMainThread ? work() : DispatchQueue.main.sync(execute: work)
   }
 }
+
+/// `CS_DEBUGGED` from xnu's `cs_blobs.h`.
+private let csDebugged: Int64 = 0x1000_0000

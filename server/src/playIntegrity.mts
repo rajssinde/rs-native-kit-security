@@ -64,7 +64,7 @@ const DEVICE_LEVELS: DeviceIntegrityLevel[] = [
   'MEETS_STRONG_INTEGRITY',
 ];
 
-function digestBytes(value: string): Buffer {
+export function digestBytes(value: string): Buffer {
   const hex = value.replace(/[:\s]/g, '');
   if (/^[0-9a-fA-F]{64}$/.test(hex)) return Buffer.from(hex, 'hex');
   return Buffer.from(value.replace(/-/g, '+').replace(/_/g, '/'), 'base64');

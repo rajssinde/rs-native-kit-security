@@ -27,6 +27,28 @@ final class DetectorSmokeTests: XCTestCase {
     XCTAssertEqual(result.reasons, ["SIMULATOR"])
   }
 
+  func testJailbreakRootPathsAreRecognised() {
+    // roothide: randomised jbroot, no /var/jb
+    XCTAssertTrue(JailbreakDetector.isJailbreakRootPath(
+      "/private/var/containers/Bundle/Application/.jbroot-1A2B3C4D5E6F7A8B/usr/lib/TweakInject/Foo.dylib"))
+    // Dopamine / palera1n rootless
+    XCTAssertTrue(JailbreakDetector.isJailbreakRootPath("/private/var/jb/usr/lib/libellekit.dylib"))
+    XCTAssertTrue(JailbreakDetector.isJailbreakRootPath("/var/jb/Library/MobileSubstrate/DynamicLibraries/X.dylib"))
+    // Stock system and app images
+    XCTAssertFalse(JailbreakDetector.isJailbreakRootPath("/usr/lib/libSystem.B.dylib"))
+    XCTAssertFalse(JailbreakDetector.isJailbreakRootPath("/System/Library/Frameworks/UIKit.framework/UIKit"))
+    XCTAssertFalse(JailbreakDetector.isJailbreakRootPath(
+      "/private/var/containers/Bundle/Application/0A1B2C3D-0000-1111-2222-333344445555/App.app/App"))
+  }
+
+  func testNoLoadedImageComesFromAJailbreakRootInTheSimulator() {
+    XCTAssertFalse(DylibScanner.loadedImageNames().contains(where: JailbreakDetector.isJailbreakRootPath))
+  }
+
+  func testSimulatorBinariesAreNeverFairPlayEncrypted() throws {
+    XCTAssertEqual(try IntegrityChecker.mainExecutableCryptId(), 0)
+  }
+
   func testJailbreakDetectionIsUnsupportedInTheSimulator() {
     // The Simulator shares the Mac's filesystem, so jailbreak signals are meaningless there.
     let detector = JailbreakDetector()

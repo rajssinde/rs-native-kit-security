@@ -34,6 +34,26 @@ export function requestIntegrityToken(requestData: string): Promise<string> {
   return getNativeSecurity().requestIntegrityToken(requestData);
 }
 
+/**
+ * Android: hardware Key Attestation. Generates a throwaway key in the
+ * TEE/StrongBox, bound to `challenge`, and resolves its certificate chain
+ * (base64 DER, leaf first). The chain carries the bootloader-lock and
+ * verified-boot state signed by the secure hardware — send it to your server
+ * for `verifyKeyAttestation()`. `challenge` must be at most 128 bytes in
+ * UTF-8. Rejects on iOS (use App Attest).
+ */
+export function requestKeyAttestation(challenge: string): Promise<string[]> {
+  const bytes = new TextEncoder().encode(challenge).length;
+  if (bytes === 0 || bytes > 128) {
+    return Promise.reject(
+      new RangeError(
+        `[@rs-native-kit/security] challenge must be 1-128 bytes in UTF-8, got ${bytes}`
+      )
+    );
+  }
+  return getNativeSecurity().requestKeyAttestation(challenge);
+}
+
 /** iOS: whether App Attest is available (iOS 14+ physical device). `false` on Android and in the Simulator. */
 export function isAppAttestSupported(): Promise<boolean> {
   return getNativeSecurity().isAppAttestSupported();

@@ -1,4 +1,5 @@
 import Foundation
+import MachO
 
 /**
  * iOS has no Android-`PackageManager`-style API for reading your own signing
@@ -12,9 +13,10 @@ import Foundation
  *   it. An attacker who patches this check out defeats it — pair it with App
  *   Attest for a guarantee the device can't fake.
  * - `checkTampering()` (release builds only) flags the `get-task-allow`
- *   development entitlement in the embedded provisioning profile: a release
- *   build carrying it was re-signed with a development profile, the usual way
- *   a modified IPA gets sideloaded.
+ *   development entitlement in the embedded provisioning profile (a release
+ *   build re-signed with a development profile, the usual way a modified IPA
+ *   gets sideloaded), a cracking tool's `SignerIdentity` Info.plist key, and a
+ *   decrypted App Store binary running outside the App Store.
  */
 final class IntegrityChecker {
 
@@ -27,8 +29,42 @@ final class IntegrityChecker {
     #else
     return Detection.run { d in
       d.signal("DEVELOPMENT_SIGNED_RELEASE", .high) { try hasDebugEntitlement() }
+      // Left in Info.plist by IPA cracking tools; Xcode and the App Store never write it.
+      d.signal("SIGNER_IDENTITY_KEY", .high) { Bundle.main.object(forInfoDictionaryKey: "SignerIdentity") != nil }
+      #if !targetEnvironment(simulator)
+      // App Store and TestFlight binaries are FairPlay-encrypted and ship no
+      // provisioning profile. No profile *and* cryptid 0 means a dumped
+      // (decrypted) App Store binary reinstalled outside the store, e.g. via
+      // TrollStore. Development/ad-hoc/enterprise builds carry a profile.
+      d.signal("DECRYPTED_APP_STORE_BINARY", .medium) {
+        guard !ProcessInfo.processInfo.isiOSAppOnMac,
+              Bundle.main.path(forResource: "embedded", ofType: "mobileprovision") == nil
+        else { return false }
+        return try IntegrityChecker.mainExecutableCryptId() == 0
+      }
+      #endif
     }
     #endif
+  }
+
+  /// `cryptid` of the main executable's `LC_ENCRYPTION_INFO_64` (0 = not
+  /// encrypted). The kernel decrypts pages, not this header, so the loaded
+  /// image reports what's on disk.
+  static func mainExecutableCryptId() throws -> UInt32 {
+    guard let header = _dyld_get_image_header(0) else {
+      throw DetectionError("main image header unavailable")
+    }
+    guard header.pointee.magic == MH_MAGIC_64 else { throw DetectionError("main image is not 64-bit") }
+    var command = UnsafeRawPointer(header).advanced(by: MemoryLayout<mach_header_64>.size)
+    for _ in 0..<header.pointee.ncmds {
+      let load = command.load(as: load_command.self)
+      if load.cmd == LC_ENCRYPTION_INFO_64 {
+        return command.load(as: encryption_info_command_64.self).cryptid
+      }
+      command = command.advanced(by: Int(load.cmdsize))
+    }
+    // No encryption load command at all: never encrypted.
+    return 0
   }
 
   func isTampered() -> Bool {

@@ -5,6 +5,7 @@ import android.os.SystemClock
 import com.facebook.proguard.annotations.DoNotStrip
 import com.margelo.nitro.NitroModules
 import com.margelo.nitro.core.Promise
+import com.margelo.nitro.rsnativekit.security.attestation.KeyAttestation
 import com.margelo.nitro.rsnativekit.security.attestation.PlayIntegrity
 import com.margelo.nitro.rsnativekit.security.platform.ActivityTracker
 import com.margelo.nitro.rsnativekit.security.platform.ScreenProtection
@@ -54,6 +55,7 @@ class Security : HybridSecuritySpec() {
   private val screenMonitor by lazy { ScreenMonitor(context) }
   private val integrityChecker by lazy { IntegrityChecker(context) }
   private val playIntegrity by lazy { PlayIntegrity(context) }
+  private val keyAttestation by lazy { KeyAttestation() }
   private val activities by lazy {
     ActivityTracker(context.applicationContext as Application, context.currentActivity)
   }
@@ -126,6 +128,9 @@ class Security : HybridSecuritySpec() {
 
   override fun requestIntegrityToken(requestData: String): Promise<String> =
     Promise.parallel { playIntegrity.request(requestData) }
+
+  override fun requestKeyAttestation(challenge: String): Promise<Array<String>> =
+    Promise.parallel { keyAttestation.attest(challenge) }
 
   /** App Attest is iOS-only; Android apps use Play Integrity instead. */
   override fun isAppAttestSupported(): Promise<Boolean> = Promise.resolved(false)

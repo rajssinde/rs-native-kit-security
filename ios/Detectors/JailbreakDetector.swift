@@ -94,6 +94,15 @@ final class JailbreakDetector {
     "Choicy"
   ]
 
+  /// Path fragments only a jailbreak root contains: rootless `/var/jb`, and
+  /// roothide's `.jbroot-<random>` directory. roothide has no fixed path to
+  /// probe, but tweaks it injects are loaded from inside that directory.
+  static let jailbreakRootMarkers = ["/.jbroot-", "/var/jb/"]
+
+  static func isJailbreakRootPath(_ path: String) -> Bool {
+    jailbreakRootMarkers.contains { path.contains($0) }
+  }
+
   func check() -> NativeDetectionResult {
     #if targetEnvironment(simulator)
     // The Simulator runs on the Mac's filesystem (which has /usr/sbin/sshd,
@@ -107,6 +116,8 @@ final class JailbreakDetector {
       d.signal("JAILBREAK_URL_SCHEME", .medium) { canOpenJailbreakUrlScheme() }
       d.signal("SANDBOX_WRITE_ESCAPE", .high) { canWriteOutsideSandbox() }
       d.signal("TWEAK_INJECTOR_DYLIB", .high) { DylibScanner.anyLoadedImageContains(dylibMarkers) }
+      // Name-independent: any library loaded from a jailbreak root, whatever it's called.
+      d.signal("JAILBREAK_ROOT_IMAGE", .high) { DylibScanner.loadedImageNames().contains(where: Self.isJailbreakRootPath) }
       #if !DEBUG
       // Xcode sets DYLD_INSERT_LIBRARIES itself for sanitizers / debugging tools.
       d.signal("DYLD_INSERT_LIBRARIES_SET", .medium) {

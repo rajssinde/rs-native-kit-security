@@ -167,6 +167,14 @@ export interface Security extends HybridObject<{
    */
   requestIntegrityToken(requestData: string): Promise<string>;
 
+  // --- Attestation: Key Attestation (Android) ----------------------------------------
+
+  /**
+   * Base64 DER certificate chain (leaf first) for a fresh hardware key whose
+   * attestation is bound to `challenge` (UTF-8, at most 128 bytes).
+   */
+  requestKeyAttestation(challenge: string): Promise<string[]>;
+
   // --- Attestation: App Attest (iOS 14+) ---------------------------------------------
 
   isAppAttestSupported(): Promise<boolean>;

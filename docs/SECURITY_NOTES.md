@@ -22,7 +22,7 @@ It is **not** designed to stop a well-resourced, targeted attacker who staticall
 - Without `configure({ expectedSigners })`, `scan()` reports `checks.signature` as `not_configured` and lists it in `report.notConfigured` — it never claims a signature it didn't verify is valid. **Configure expected signers for every production build.**
 - A check that fails to run reports `status: 'error'`. `scan()` lists it in `failed`, sets `complete: false`, makes `secure` false, and by default scores it like a detection (`failedCheckPenalty`, fail closed).
 - `not_detected` is at most `medium` confidence: on-device checks can be hidden from. Treat it as absence of evidence, not evidence of safety.
-- `checkTampering()` is a heuristic (a debuggable, sideloaded, or development-signed *release* build; `unsupported` in debug builds), not a cryptographic guarantee. It will not catch a competently repackaged app re-signed with a valid certificate — see [Integrity checks](#integrity-checks) below.
+- `checkTampering()` is a heuristic (a debuggable, sideloaded, LSPatch-repackaged, development-signed, cracked or decrypted-and-reinstalled *release* build; `unsupported` in debug builds), not a cryptographic guarantee. It will not catch a competently repackaged app re-signed with a valid certificate — see [Integrity checks](#integrity-checks) below.
 
 ## Integrity checks
 

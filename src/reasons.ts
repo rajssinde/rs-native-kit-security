@@ -17,6 +17,12 @@ export const REASON_DESCRIPTIONS: Readonly<Record<string, string>> = {
   SYSTEM_WRITABLE: 'The /system partition is writable',
   SELINUX_PERMISSIVE: 'SELinux is in permissive mode',
   SYSTEM_MOUNTED_RW: 'A system partition is mounted read-write',
+  BOOTLOADER_UNLOCKED:
+    'The bootloader is unlocked (boot properties; confirm with Key Attestation)',
+  SYSTEM_FILE_FROM_DATA:
+    'A system file is served from the data partition (systemless-root module mount)',
+  SYSTEM_OVERLAY_MOUNT:
+    'A system partition is overlaid (KernelSU/APatch module mount)',
   MAGISK_APP: 'The Magisk app is installed',
   MAGISK_FILES: 'Magisk files are present on the device',
   MAGISK_BINARY: 'The magisk binary is present',
@@ -30,6 +36,8 @@ export const REASON_DESCRIPTIONS: Readonly<Record<string, string>> = {
   SYMLINKED_SYSTEM_DIRECTORY:
     'A system directory has been replaced with a symlink',
   SANDBOX_WRITE_ESCAPE: 'The app can write outside its sandbox',
+  JAILBREAK_ROOT_IMAGE:
+    'A library is loaded from a jailbreak root (rootless or roothide)',
   TWEAK_INJECTOR_DYLIB:
     'A jailbreak tweak injector library is loaded in the app',
   DYLD_INSERT_LIBRARIES_SET: 'DYLD_INSERT_LIBRARIES is set for the app process',
@@ -54,6 +62,8 @@ export const REASON_DESCRIPTIONS: Readonly<Record<string, string>> = {
     'The app was launched by a debugger or tool rather than the home screen',
   TRACER_PID_ATTACHED:
     'A native debugger or ptrace-based tool is attached to the app process',
+  CODE_SIGNING_DEBUGGED:
+    'The kernel has recorded a debugger attaching to the app process',
   MOCK_LOCATION_APPOP: 'This app is set as the mock-location provider',
   MOCK_LOCATION_APP_INSTALLED: 'A fake-GPS app is installed',
   SIMULATED_LOCATION: 'The last location fix was simulated by software',
@@ -107,6 +117,11 @@ export const REASON_DESCRIPTIONS: Readonly<Record<string, string>> = {
   NO_INSTALLER_RECORDED: 'The app was sideloaded (no installer recorded)',
   DEVELOPMENT_SIGNED_RELEASE:
     'A release build is signed with a development profile (likely re-signed)',
+  LSPATCH_REPACKAGED:
+    'The app was repackaged with LSPatch to inject Xposed modules',
+  SIGNER_IDENTITY_KEY: "The app's Info.plist carries a cracking tool's marker",
+  DECRYPTED_APP_STORE_BINARY:
+    'A decrypted App Store binary is running outside the App Store',
   SIGNATURE_MISMATCH: "The app's signer doesn't match any expected signer",
   SIGNATURE_HASH_NOT_CONFIGURED: 'No expected signers are configured',
   APK_HASH_MISMATCH: "The APK's SHA-256 doesn't match the expected hash",

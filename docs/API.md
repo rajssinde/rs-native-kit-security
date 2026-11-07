@@ -51,10 +51,10 @@ All checks run off the JS thread (Kotlin/Swift `Promise.parallel`). An individua
 | `checkEmulator()` | ✅ | ✅ (Simulator) | Exact on iOS (compile-time flag); signal-based on Android |
 | `checkDeveloperMode()` | ✅ | low confidence | iOS: embedded provisioning profile presence |
 | `checkUsbDebugging()` | ✅ | `unsupported` | No iOS equivalent |
-| `checkDebugger()` | ✅ (Java/JDWP) | ✅ (`P_TRACED`) | Independent of the JS debugger |
+| `checkDebugger()` | ✅ (JDWP, `TracerPid`) | ✅ (`P_TRACED`, `CS_DEBUGGED`, parent process) | Independent of the JS debugger |
 | `checkMockLocation()` | ✅ | best-effort | iOS needs location permission and a cached fix; otherwise `not_detected` at `low` confidence |
 | `checkVpn()` | ✅ | ✅ | No VPN entitlement required |
-| `checkProxy()` | ✅ | ✅ | iOS includes PAC (auto-config) proxies |
+| `checkProxy()` | ✅ | ✅ | HTTP, HTTPS and PAC (auto-config) proxies; Android also JVM SOCKS proxies |
 | `checkScreenRecording()` | low confidence | ✅ | iOS: `UIScreen.isCaptured`. Android has no equivalent API |
 | `checkScreenCapture()` | ✅ | ✅ | Screenshot in the last ~5 s. Only observed while an `addListener()` subscription is active |
 | `checkOverlay()` | low confidence | `unsupported` | |
@@ -166,6 +166,7 @@ Both resolve whether protection is now active and stay applied, across activity 
 |---|---|---|---|
 | `prepareIntegrityToken(cloudProjectNumber)` | ✅ | rejects | Warm up once; takes a few seconds |
 | `requestIntegrityToken(requestData)` | ✅ | rejects | Token's `requestHash` = hex SHA-256 of `requestData` |
+| `requestKeyAttestation(challenge)` | ✅ | rejects | Base64 DER certificate chain, leaf first; `challenge` 1-128 bytes in UTF-8 |
 | `isAppAttestSupported()` | `false` | ✅ | iOS 14+ physical device |
 | `generateAppAttestKey()` | rejects | ✅ | Resolves `keyId`; persist it |
 | `attestAppAttestKey(keyId, challenge)` | rejects | ✅ | Base64 attestation object; `clientDataHash` = SHA-256 of `challenge` |

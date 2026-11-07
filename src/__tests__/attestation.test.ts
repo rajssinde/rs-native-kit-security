@@ -34,6 +34,24 @@ describe('attestation', () => {
     expect(mockNativeSecurity.prepareIntegrityToken).toHaveBeenCalledTimes(1);
   });
 
+  it('passes the challenge through to Key Attestation', async () => {
+    await expect(
+      attestation.requestKeyAttestation('challenge')
+    ).resolves.toEqual(['leaf', 'intermediate']);
+    expect(mockNativeSecurity.requestKeyAttestation).toHaveBeenCalledWith(
+      'challenge'
+    );
+  });
+
+  it('rejects a Key Attestation challenge Keystore would refuse, before reaching native', async () => {
+    for (const bad of ['', 'x'.repeat(129), 'é'.repeat(65)]) {
+      await expect(attestation.requestKeyAttestation(bad)).rejects.toThrow(
+        RangeError
+      );
+    }
+    expect(mockNativeSecurity.requestKeyAttestation).toHaveBeenCalledTimes(1);
+  });
+
   it('delegates the App Attest flow', async () => {
     await expect(attestation.isAppAttestSupported()).resolves.toBe(true);
     await expect(attestation.generateAppAttestKey()).resolves.toBe('key-id');

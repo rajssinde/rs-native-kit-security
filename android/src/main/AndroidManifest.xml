@@ -34,6 +34,10 @@
         <package android:name="me.phh.superuser" />
         <package android:name="com.geohot.towelroot" />
         <package android:name="com.ramdroid.appquarantine" />
+        <package android:name="me.weishu.kernelsu" />
+        <package android:name="com.rifsxd.ksunext" />
+        <package android:name="com.sukisu.ultra" />
+        <package android:name="me.bmax.apatch" />
 
         <!-- Hooking frameworks (HookDetector) -->
         <package android:name="de.robv.android.xposed.installer" />

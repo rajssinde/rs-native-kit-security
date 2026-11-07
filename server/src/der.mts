@@ -1,17 +1,34 @@
 import { AttestationError } from './errors.mts';
 
-/** One DER TLV: tag byte, and the start/end of its contents within the input. */
-interface Tlv {
+/**
+ * One DER TLV: first tag byte, the full tag number (differs from `tag & 0x1f`
+ * only for high-tag-number forms such as Key Attestation's `[704]`), and the
+ * start/end of its contents within the input.
+ */
+export interface Tlv {
   tag: number;
+  tagNumber: number;
   start: number;
   end: number;
 }
 
-function readTlv(input: Buffer, offset: number, limit = input.length): Tlv {
+export function readTlv(input: Buffer, offset: number, limit = input.length): Tlv {
   if (offset + 2 > limit) throw new AttestationError('DER_TRUNCATED', 'DER data ends unexpectedly');
   const tag = input.readUInt8(offset);
-  let length = input.readUInt8(offset + 1);
-  let start = offset + 2;
+  let cursor = offset + 1;
+  let tagNumber = tag & 0x1f;
+  if (tagNumber === 0x1f) {
+    tagNumber = 0;
+    let byte: number;
+    do {
+      if (cursor >= limit || tagNumber > 0xffffff) throw new AttestationError('DER_INVALID', 'unsupported DER tag encoding');
+      byte = input.readUInt8(cursor++);
+      tagNumber = tagNumber * 128 + (byte & 0x7f);
+    } while (byte & 0x80);
+  }
+  if (cursor >= limit) throw new AttestationError('DER_TRUNCATED', 'DER data ends unexpectedly');
+  let length = input.readUInt8(cursor);
+  let start = cursor + 1;
   if (length & 0x80) {
     const bytes = length & 0x7f;
     if (bytes === 0 || bytes > 4 || start + bytes > limit) {
@@ -23,7 +40,7 @@ function readTlv(input: Buffer, offset: number, limit = input.length): Tlv {
   }
   const end = start + length;
   if (end > limit) throw new AttestationError('DER_TRUNCATED', 'DER value runs past its container');
-  return { tag, start, end };
+  return { tag, tagNumber, start, end };
 }
 
 /** DER encoding of an OBJECT IDENTIFIER's contents, e.g. "1.2.840.113635.100.8.2". */

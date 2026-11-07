@@ -27,7 +27,12 @@ internal object KnownPackages {
     "com.alephzain.framaroot",
     "me.phh.superuser",
     "com.geohot.towelroot",
-    "com.ramdroid.appquarantine"
+    "com.ramdroid.appquarantine",
+    // Kernel-level root managers (application IDs from each project's build.gradle.kts)
+    "me.weishu.kernelsu", // KernelSU
+    "com.rifsxd.ksunext", // KernelSU Next
+    "com.sukisu.ultra", // SukiSU Ultra
+    "me.bmax.apatch" // APatch
   )
 
   const val MAGISK = "com.topjohnwu.magisk"

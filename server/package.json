@@ -1,7 +1,7 @@
 {
   "name": "@rs-native-kit/security-server",
   "version": "0.1.0",
-  "description": "Server-side verification for @rs-native-kit/security: Apple App Attest and Google Play Integrity, with single-use challenges. Zero runtime dependencies.",
+  "description": "Server-side verification for @rs-native-kit/security: Apple App Attest, Google Play Integrity and Android Key Attestation, with single-use challenges. Zero runtime dependencies.",
   "type": "module",
   "exports": {
     ".": {

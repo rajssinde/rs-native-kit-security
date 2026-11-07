@@ -10,6 +10,7 @@
 #include <jni.h>
 #include <fcntl.h>
 #include <sys/syscall.h>
+#include <sys/system_properties.h>
 #include <unistd.h>
 
 #include <cerrno>
@@ -95,6 +96,17 @@ Java_com_margelo_nitro_rsnativekit_security_util_NativeChecks_readFile(JNIEnv* e
     utf16[i] = static_cast<char16_t>(static_cast<unsigned char>(content[i]));
   }
   return env->NewString(reinterpret_cast<const jchar*>(utf16.data()), static_cast<jsize>(utf16.size()));
+}
+
+// System property value ("" when unset), read from the property area in this
+// process rather than by running `getprop`, so a hooked or replaced getprop
+// binary — or a hook on android.os.SystemProperties — doesn't see the read.
+JNIEXPORT jstring JNICALL
+Java_com_margelo_nitro_rsnativekit_security_util_NativeChecks_readProperty(JNIEnv* env, jclass, jstring name) {
+  std::string nativeName = toStdString(env, name);
+  char value[PROP_VALUE_MAX] = {0};
+  __system_property_get(nativeName.c_str(), value);
+  return env->NewStringUTF(value);
 }
 
 } // extern "C"
