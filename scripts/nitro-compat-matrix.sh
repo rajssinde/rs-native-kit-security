@@ -23,14 +23,23 @@ WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 FAILED=0
 
-install_runtime() {
-  local version="$1"
-  (cd "$WORK" && npm pack "react-native-nitro-modules@$version" --silent >/dev/null)
+# Extracts a package into both node_modules, then its dependencies: since 0.37.2
+# the runtime needs nitro-core, which a real install would bring in.
+install_package() {
+  local name="$1" version="$2" tarball dep
+  tarball="$(cd "$WORK" && npm pack "$name@$version" --silent | tail -1)"
   for nm in "$ROOT/node_modules" "$ROOT/example/node_modules"; do
-    rm -rf "$nm/react-native-nitro-modules"
-    mkdir -p "$nm/react-native-nitro-modules"
-    tar -xzf "$WORK/react-native-nitro-modules-$version.tgz" -C "$nm/react-native-nitro-modules" --strip-components=1
+    rm -rf "${nm:?}/$name"
+    mkdir -p "$nm/$name"
+    tar -xzf "$WORK/$tarball" -C "$nm/$name" --strip-components=1
   done
+  while read -r dep; do
+    [[ -n "$dep" ]] && install_package "${dep%% *}" "${dep##* }"
+  done < <(node -p "Object.entries(require('$ROOT/example/node_modules/$name/package.json').dependencies ?? {}).map((d) => d.join(' ')).join('\n')")
+}
+
+install_runtime() {
+  install_package react-native-nitro-modules "$1"
 }
 
 build_android() {
