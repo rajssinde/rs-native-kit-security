@@ -1,0 +1,13 @@
+# Waits for the first scan and checks it ran every detector.
+appId: rsnativekit.security.example
+---
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible:
+      id: scan-score
+    timeout: 60000
+- assertNotVisible:
+    id: scan-error
+- assertNotVisible:
+    id: scan-incomplete

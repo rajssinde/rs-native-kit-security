@@ -18,13 +18,6 @@ on:
 permissions:
   contents: read
 
-env:
-  # Patch releases covering every supported Nitro minor (see nitro-compat.json).
-  NITRO_COMPAT_VERSIONS: 0.32.2 0.33.9 0.34.1 0.35.10 0.36.5 0.37.1
-  # Last version of each nitrogen tree plus the first modern one; enough for the
-  # far more expensive macOS runners.
-  NITRO_COMPAT_VERSIONS_IOS: 0.32.2 0.34.1 0.35.10 0.37.1
-
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -59,6 +52,9 @@ jobs:
       - name: Run unit tests
         run: yarn test --maxWorkers=2 --coverage
 
+      - name: Test automation scripts
+        run: node --test scripts/*.test.mjs
+
       - name: Upload coverage report
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -90,7 +86,8 @@ jobs:
         run: ../node_modules/.bin/tsc -p tsconfig.json
 
   commitlint:
-    if: github.event_name == 'pull_request'
+    # Dependabot's generated commit bodies exceed the line-length rule.
+    if: github.event_name == 'pull_request' && github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
 
     steps:
@@ -105,6 +102,25 @@ jobs:
       - name: Validate PR commits with commitlint
         run: npx commitlint --from ${{ github.event.pull_request.base.sha }} --to ${{ github.event.pull_request.head.sha }} --verbose
 
+      # A squash merge uses the title as the commit message, which decides the release.
+      - name: Validate PR title with commitlint
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: printf '%s\n' "$PR_TITLE" | npx commitlint --verbose
+
+  dependency-review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      - name: Review dependency changes
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: high
+
   build-library:
     runs-on: ubuntu-latest
 
@@ -117,6 +133,9 @@ jobs:
 
       - name: Build package
         run: yarn prepare
+
+      - name: Check package contents
+        run: node scripts/check-package.mjs
 
   build-android:
     runs-on: ubuntu-latest
@@ -224,8 +243,8 @@ jobs:
         env:
           JAVA_OPTS: "-XX:MaxHeapSize=6g"
         run: |
-          # Word splitting of NITRO_COMPAT_VERSIONS is intended.
-          scripts/nitro-compat-matrix.sh android $NITRO_COMPAT_VERSIONS \
+          # Word splitting of the version list is intended.
+          scripts/nitro-compat-matrix.sh android $(node -p "require('./nitro-compat.json').ci.android.join(' ')") \
             "$(npm view react-native-nitro-modules version)"
 
   nitro-compat-ios:
@@ -260,7 +279,7 @@ jobs:
 
       - name: Build against each Nitro runtime
         run: |
-          scripts/nitro-compat-matrix.sh ios $NITRO_COMPAT_VERSIONS_IOS \
+          scripts/nitro-compat-matrix.sh ios $(node -p "require('./nitro-compat.json').ci.ios.join(' ')") \
             "$(npm view react-native-nitro-modules version)"
 
   build-ios:
@@ -305,7 +324,7 @@ jobs:
           xcode-version: ${{ env.XCODE_VERSION }}
 
       - name: Install cocoapods
-        if: env.turbo_cache_hit != 1 && steps.cocoapods-cache.outputs.cache-hit != 'true'
+        if: env.turbo_cache_hit != 1
         run: |
           cd example
           bundle install
@@ -329,3 +348,159 @@ jobs:
       - name: Build example for Web
         run: |
           yarn example build:web
+
+  e2e-android:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      - name: Setup
+        uses: ./.github/actions/setup
+
+      - name: Generate nitrogen code
+        run: yarn nitrogen
+
+      - name: Install JDK
+        uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Finalize Android SDK
+        run: |
+          /bin/bash -c "yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null"
+
+      - name: Cache Gradle
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: |
+            ~/.gradle/wrapper
+            ~/.gradle/caches
+          key: ${{ runner.os }}-gradle-${{ hashFiles('example/android/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Build release APK
+        working-directory: example/android
+        env:
+          JAVA_OPTS: "-XX:MaxHeapSize=6g"
+        run: ./gradlew :app:assembleRelease -PreactNativeArchitectures=x86_64 --console=plain
+
+      - name: Install Maestro
+        run: |
+          curl -fsSL "https://get.maestro.mobile.dev" | MAESTRO_VERSION="$MAESTRO_VERSION" bash
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+        env:
+          MAESTRO_VERSION: 2.11.0
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run Maestro on the emulator
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        env:
+          SKIP_BUILD: 1
+        with:
+          api-level: 35
+          target: google_apis_playstore
+          arch: x86_64
+          disable-animations: true
+          script: scripts/e2e.sh android
+
+      - name: Upload Maestro output
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: e2e-android
+          path: example/e2e/output/
+          retention-days: 14
+
+  e2e-ios:
+    # Also runs the XCTests, which share the pod install and simulator.
+    runs-on: macos-latest
+
+    env:
+      XCODE_VERSION: 26
+      RCT_USE_RN_DEP: 1
+      RCT_USE_PREBUILT_RNCORE: 1
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      - name: Setup
+        uses: ./.github/actions/setup
+
+      - name: Generate nitrogen code
+        run: yarn nitrogen
+
+      - name: Use appropriate Xcode version
+        uses: maxim-lobanov/setup-xcode@60606e260d2fc5762a71e64e74b2174e8ea3c8bd # v1.6.0
+        with:
+          xcode-version: ${{ env.XCODE_VERSION }}
+
+      - name: Install JDK
+        uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Install Maestro
+        run: |
+          curl -fsSL "https://get.maestro.mobile.dev" | MAESTRO_VERSION="$MAESTRO_VERSION" bash
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+        env:
+          MAESTRO_VERSION: 2.11.0
+
+      - name: Install pods with the test target
+        working-directory: example
+        env:
+          RS_IOS_TESTS: 1
+        run: |
+          bundle install
+          bundle exec pod install --project-directory=ios
+
+      - name: Run XCTests
+        run: scripts/ios-unit-tests.sh
+
+      - name: Run Maestro on the simulator
+        run: scripts/e2e.sh ios
+
+      - name: Upload Maestro output
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: e2e-ios
+          path: example/e2e/output/
+          retention-days: 14
+
+  ci-ok:
+    # The one required status check, and what the Release workflow waits for.
+    # Jobs skipped for the event (for example the iOS Nitro matrix on PRs) don't count.
+    name: CI OK
+    if: always()
+    needs:
+      - lint
+      - test
+      - server-verifier
+      - commitlint
+      - dependency-review
+      - build-library
+      - build-android
+      - nitro-compat-android
+      - nitro-compat-ios
+      - build-ios
+      - build-web
+      - e2e-android
+      - e2e-ios
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check job results
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1

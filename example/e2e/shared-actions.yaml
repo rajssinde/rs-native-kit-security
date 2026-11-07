@@ -1,0 +1,28 @@
+# Rescans and toggles screen protection; neither may surface a scan error.
+appId: rsnativekit.security.example
+---
+- scrollUntilVisible:
+    element:
+      id: protect-screen
+    direction: DOWN
+- tapOn:
+    id: protect-screen
+- assertNotVisible:
+    id: scan-error
+- tapOn:
+    id: protect-screen
+- scrollUntilVisible:
+    element:
+      id: refresh
+    direction: UP
+- tapOn:
+    id: refresh
+- extendedWaitUntil:
+    visible:
+      id: refresh
+      text: Refresh
+    timeout: 30000
+- assertNotVisible:
+    id: scan-error
+- assertNotVisible:
+    id: scan-incomplete

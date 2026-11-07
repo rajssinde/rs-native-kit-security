@@ -44,7 +44,8 @@
     "test": "jest",
     "release": "release-it --only-version",
     "web": "vite",
-    "build:web": "vite build"
+    "build:web": "vite build",
+    "verify": "scripts/verify.sh"
   },
   "keywords": [
     "react-native",
@@ -96,7 +97,8 @@
   },
   "homepage": "https://github.com/rajssinde/rs-native-kit-security#readme",
   "publishConfig": {
-    "registry": "https://registry.npmjs.org/"
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
   },
   "devDependencies": {
     "@commitlint/config-conventional": "^21.0.2",
@@ -199,20 +201,31 @@
   },
   "release-it": {
     "git": {
-      "commitMessage": "chore: release ${version}",
-      "tagName": "v${version}"
+      "commitMessage": "chore: release ${version} [skip ci]",
+      "tagName": "v${version}",
+      "requireBranch": "main"
     },
     "npm": {
-      "publish": true
+      "publish": true,
+      "skipChecks": true
     },
     "github": {
-      "release": true
+      "release": true,
+      "comments": {
+        "submit": true
+      }
+    },
+    "hooks": {
+      "after:bump": "npm version ${version} --prefix server --no-git-tag-version --allow-same-version"
     },
     "plugins": {
       "@release-it/conventional-changelog": {
         "preset": {
           "name": "angular"
-        }
+        },
+        "ignoreRecommendedBump": true,
+        "infile": "CHANGELOG.md",
+        "header": "# Changelog\n\nAll notable changes to this project will be documented in this file. This project adheres to [Semantic Versioning](https://semver.org/); see [docs/MIGRATION.md](docs/MIGRATION.md#version-policy) for the versioning policy."
       }
     }
   },

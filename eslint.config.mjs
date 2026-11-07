@@ -27,6 +27,10 @@ export default defineConfig([
     ignores: [
       '**/node_modules/',
       'lib/',
+      'example/dist/',
+      'example/vendor/',
+      '.claude/',
+      '.yarn/',
       'coverage/',
       'nitrogen/',
       'docs/',

@@ -1,0 +1,75 @@
+# Expected results on a clean Android emulator (Play Store image, no su binary). A false positive here fails CI.
+appId: rsnativekit.security.example
+---
+- runFlow: shared-scan.yaml
+- scrollUntilVisible:
+    element:
+      id: status-root
+    direction: DOWN
+- assertVisible:
+    id: status-root
+    text: 'OK'
+- scrollUntilVisible:
+    element:
+      id: status-magisk
+    direction: DOWN
+- assertVisible:
+    id: status-magisk
+    text: 'OK'
+- scrollUntilVisible:
+    element:
+      id: status-busybox
+    direction: DOWN
+- assertVisible:
+    id: status-busybox
+    text: 'OK'
+- scrollUntilVisible:
+    element:
+      id: status-jailbreak
+    direction: DOWN
+- assertVisible:
+    id: status-jailbreak
+    text: 'N/A'
+- scrollUntilVisible:
+    element:
+      id: status-emulator
+    direction: DOWN
+- assertVisible:
+    id: status-emulator
+    text: 'FLAGGED.*'
+- scrollUntilVisible:
+    element:
+      id: status-debugger
+    direction: DOWN
+- assertVisible:
+    id: status-debugger
+    text: 'OK'
+- scrollUntilVisible:
+    element:
+      id: status-hooks
+    direction: DOWN
+- assertVisible:
+    id: status-hooks
+    text: 'OK'
+- scrollUntilVisible:
+    element:
+      id: status-frida
+    direction: DOWN
+- assertVisible:
+    id: status-frida
+    text: 'OK'
+- scrollUntilVisible:
+    element:
+      id: status-xposed
+    direction: DOWN
+- assertVisible:
+    id: status-xposed
+    text: 'OK'
+- scrollUntilVisible:
+    element:
+      id: status-lsposed
+    direction: DOWN
+- assertVisible:
+    id: status-lsposed
+    text: 'OK'
+- runFlow: shared-actions.yaml

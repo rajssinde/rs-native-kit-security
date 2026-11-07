@@ -65,7 +65,9 @@ function ScoreCard({ report }: { report: SecurityReport }) {
   const color = RISK_COLORS[report.riskLevel];
   return (
     <View style={[styles.scoreCard, { borderColor: color }]}>
-      <Text style={[styles.scoreValue, { color }]}>{report.score}</Text>
+      <Text testID="scan-score" style={[styles.scoreValue, { color }]}>
+        {report.score}
+      </Text>
       <Text style={styles.scoreOutOf}>/ 100</Text>
       <View style={[styles.riskBadge, { backgroundColor: color }]}>
         <Text style={styles.riskBadgeText}>{report.riskLevel} RISK</Text>
@@ -78,7 +80,7 @@ function ScoreCard({ report }: { report: SecurityReport }) {
         {Math.round(report.durationMs)} ms
       </Text>
       {!report.complete && (
-        <Text style={styles.incompleteLabel}>
+        <Text testID="scan-incomplete" style={styles.incompleteLabel}>
           {report.failed.length} check(s) failed to run — result is incomplete
         </Text>
       )}
@@ -87,9 +89,11 @@ function ScoreCard({ report }: { report: SecurityReport }) {
 }
 
 function CheckRow({
+  checkKey,
   label,
   result,
 }: {
+  checkKey: SecurityCheckKey;
   label: string;
   result: DetectionResult;
 }) {
@@ -108,7 +112,10 @@ function CheckRow({
         )}
       </View>
       <View style={[styles.checkPill, { backgroundColor: `${color}1a` }]}>
-        <Text style={[styles.checkPillText, { color }]}>
+        <Text
+          testID={`status-${checkKey}`}
+          style={[styles.checkPillText, { color }]}
+        >
           {statusLabel}
           {result.status === 'detected' ? ` · ${result.confidence}` : ''}
         </Text>
@@ -171,6 +178,7 @@ export default function App() {
       <View style={styles.header}>
         <Text style={styles.title}>Security Dashboard</Text>
         <Pressable
+          testID="refresh"
           style={({ pressed }) => [
             styles.refreshButton,
             pressed && styles.refreshButtonPressed,
@@ -189,7 +197,7 @@ export default function App() {
       )}
 
       {error && (
-        <View style={styles.errorBox}>
+        <View testID="scan-error" style={styles.errorBox}>
           <Text style={styles.errorTitle}>Scan unavailable</Text>
           <Text style={styles.errorMessage}>{error}</Text>
         </View>
@@ -204,6 +212,7 @@ export default function App() {
             {(Object.keys(report.checks) as SecurityCheckKey[]).map((key) => (
               <CheckRow
                 key={key}
+                checkKey={key}
                 label={CHECK_LABELS[key]}
                 result={report.checks[key]}
               />
@@ -234,7 +243,11 @@ export default function App() {
             captured (iOS), and blocks overlay tapjacking (Android).
           </Text>
         </View>
-        <Switch value={protectedScreen} onValueChange={toggleProtection} />
+        <Switch
+          testID="protect-screen"
+          value={protectedScreen}
+          onValueChange={toggleProtection}
+        />
       </View>
 
       <Text style={styles.sectionTitle}>Live security events</Text>

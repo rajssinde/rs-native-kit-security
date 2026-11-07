@@ -91,3 +91,6 @@ coverage/
 
 # Vite web build output
 example/dist/
+
+# Maestro output
+example/e2e/output/

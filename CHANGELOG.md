@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file. This project adheres to [Semantic Versioning](https://semver.org/); see [docs/MIGRATION.md](docs/MIGRATION.md#version-policy) for the versioning policy.
 
-## [0.1.0] - Unreleased
+## [0.1.0]
 
 Initial implementation of the enterprise security SDK.
 
@@ -16,6 +16,8 @@ Initial implementation of the enterprise security SDK.
 - Full iOS (Swift) native implementation: jailbreak detection, Simulator detection, Frida hook detection, debugger/mock-location detection, VPN/proxy monitoring, screen recording/screenshot monitoring (via `UIScreen.isCaptured` and screenshot notifications), signature-fingerprint/tamper heuristics.
 - Enterprise dashboard example app (security score, per-check grid, live event log, refresh button).
 - Full documentation set: Installation, API Reference, Examples, Migration Guide, Security Notes, FAQ, Troubleshooting, Best Practices.
+
+## Detailed notes for the first automated release
 
 ### Added
 

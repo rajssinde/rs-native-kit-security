@@ -119,21 +119,7 @@ Our pre-commit hooks verify that your commit message matches this format when co
 
 ### Publishing to npm
 
-We use [release-it](https://github.com/release-it/release-it) to make it easier to publish new versions. It handles common tasks like bumping version based on semver, creating tags and releases etc.
-
-To publish new versions locally, run the following:
-
-```sh
-yarn release
-```
-
-Releases can also be run from CI via the manually-triggered [`Release` workflow](.github/workflows/release.yml) (`workflow_dispatch`, defaults to a dry run). It requires a GitHub **environment** named `npm-publish` (Settings → Environments) configured with:
-
-- An `NPM_TOKEN` secret (an npm automation token with publish access to `@rs-native-kit/security`).
-- Optionally, required reviewers, so every publish gets a manual approval gate before it runs.
-
-Nothing publishes automatically on push — every release is a deliberate, manually-triggered action.
-
+Releases are automatic: once CI passes on `main`, [`release.yml`](.github/workflows/release.yml) publishes to npm if the commits since the last tag include a `feat`, `fix`, `perf`, `revert` or breaking change. [Automation](docs/AUTOMATION.md) explains how the version is chosen and how to preview or retry a release.
 
 ### Scripts
 
@@ -148,6 +134,7 @@ The `package.json` file contains various scripts for common tasks:
 - `yarn example ios`: run the example app on iOS.
   - `yarn example web`: run the example app on Web.
 - `yarn example build:web`: build the example app for Web.
+- `yarn verify`: run the checks CI runs. `scripts/verify.sh` also takes `android`, `ios`, `e2e-android`, `e2e-ios` and `all`.
   
 ### Sending a pull request
 

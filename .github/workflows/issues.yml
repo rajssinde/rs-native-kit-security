@@ -1,0 +1,58 @@
+name: Issues
+
+on:
+  issues:
+    types:
+      - opened
+  schedule:
+    - cron: '0 5 * * *'
+
+permissions:
+  contents: read
+
+jobs:
+  triage:
+    if: github.event_name == 'issues'
+    runs-on: ubuntu-latest
+
+    permissions:
+      issues: write
+
+    steps:
+      # The title and body are untrusted, so they only reach the shell through env.
+      - name: Label by platform
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          NUMBER: ${{ github.event.issue.number }}
+          TITLE: ${{ github.event.issue.title }}
+          BODY: ${{ github.event.issue.body }}
+        run: |
+          # The bug template's environment dump mentions both platforms, so only
+          # the title and the summary section count.
+          SUMMARY="$(printf '%s\n' "$BODY" | sed -n '/^### Bug summary/,/^### Library version/p')"
+          TEXT="$(printf '%s\n%s\n' "$TITLE" "${SUMMARY:-$BODY}" | tr '[:upper:]' '[:lower:]')"
+          LABELS=needs-triage
+          if grep -qE 'android|apk|gradle|kotlin' <<< "$TEXT"; then LABELS="$LABELS,android"; fi
+          if grep -qE '\bios\b|iphone|ipad|xcode|cocoapods|swift' <<< "$TEXT"; then LABELS="$LABELS,ios"; fi
+          gh issue edit "$NUMBER" --add-label "$LABELS"
+
+  stale:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+
+    permissions:
+      issues: write
+
+    steps:
+      # Only issues waiting on the reporter are ever closed.
+      - name: Close unanswered issues
+        uses: actions/stale@4391f3da665fdf50b6810c1a66712fb9ba21aa93 # v11.0.0
+        with:
+          only-labels: needs-info
+          days-before-stale: 14
+          days-before-close: 7
+          days-before-pr-stale: -1
+          days-before-pr-close: -1
+          stale-issue-message: 'This issue needs more information to move forward. It will close in 7 days without a reply; a reply keeps it open.'
+          close-issue-message: 'Closing because the information needed was not provided. Comment with the details and it can be reopened.'
