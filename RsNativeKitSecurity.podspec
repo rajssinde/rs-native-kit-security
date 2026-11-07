@@ -55,6 +55,7 @@ Pod::Spec.new do |s|
 
   s.test_spec 'Tests' do |test_spec|
     test_spec.source_files = 'ios/Tests/**/*.swift'
-    test_spec.requires_app_host = true
+    # CocoaPods' generated host app has no scene delegate, so UIKit aborts it on iOS 27.
+    test_spec.requires_app_host = false
   end
 end
