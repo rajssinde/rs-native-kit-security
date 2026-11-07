@@ -65,6 +65,14 @@ The Team ID couldn't be read from the app's code signature — `error` says why.
 
 Make sure your Jest config's `moduleFileExtensions`/`transformIgnorePatterns` follow the standard React Native preset (`@react-native/jest-preset`), and that you're not accidentally resolving the package's TypeScript source instead of `lib/` outside of this repo's own test suite (the `rs-native-kit-security-source` custom export condition is only meant to be used inside this repo).
 
+## "react-native-nitro-modules X is not supported"
+
+Your app uses a Nitro runtime older than this package supports. Upgrade `react-native-nitro-modules` to 0.32.0 or newer (any Nitro library in your app must agree on one version) — see [Nitro version support](INSTALLATION.md#nitro-version-support).
+
+## "newer than the newest tested version"
+
+A warning, not an error: your Nitro runtime is newer than the versions this release was tested against. It usually works; if the native build fails, please open an issue with the Nitro version.
+
 ## Still stuck?
 
 Open an issue with: RN version, `react-native-nitro-modules` version, platform + OS version, and the exact error/stack trace. See [CONTRIBUTING.md](../CONTRIBUTING.md).

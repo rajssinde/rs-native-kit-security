@@ -30,9 +30,64 @@ def reactNativeArchitectures() {
   return value ? value.split(",") : ["armeabi-v7a", "x86", "x86_64", "arm64-v8a"]
 }
 
+// Nitro's generated bindings are tied to the react-native-nitro-modules runtime: this
+// package ships one tree per compatible range (see ../nitro-compat.json) and picks the
+// one matching the app's installed runtime.
+def nitroRuntimeVersion() {
+  File pkg = null
+  def nitroProject = rootProject.findProject(":react-native-nitro-modules")
+  if (nitroProject != null) {
+    pkg = new File(nitroProject.projectDir, "../package.json")
+  }
+  if (pkg == null || !pkg.exists()) {
+    try {
+      def proc = ["node", "-p", "require.resolve('react-native-nitro-modules/package.json')"].execute(null, projectDir)
+      def out = proc.text.trim()
+      proc.waitFor()
+      if (proc.exitValue() == 0) pkg = new File(out)
+    } catch (Exception ignored) {
+      // node unavailable; handled below
+    }
+  }
+  return (pkg != null && pkg.exists()) ? new groovy.json.JsonSlurper().parse(pkg).version : null
+}
+
+def versionTuple(String version) {
+  def match = (version =~ /^(\d+)\.(\d+)\.(\d+)/)
+  return match.find() ? [match.group(1) as int, match.group(2) as int, match.group(3) as int] : null
+}
+
+def compareVersions(a, b) {
+  for (int i = 0; i < 3; i++) {
+    if (a[i] != b[i]) return a[i] <=> b[i]
+  }
+  return 0
+}
+
+def nitroCompat = new groovy.json.JsonSlurper().parse(file("../nitro-compat.json"))
+def nitroVersion = nitroRuntimeVersion()
+def nitroTuple = nitroVersion != null ? versionTuple(nitroVersion) : null
+def nitrogenDir = "generated"
+if (nitroTuple == null) {
+  logger.warn("[@rs-native-kit/security] Could not determine the react-native-nitro-modules version; assuming >= ${nitroCompat.modernFrom}.")
+} else if (compareVersions(nitroTuple, versionTuple(nitroCompat.minimum)) < 0) {
+  throw new GradleException(
+    "[@rs-native-kit/security] react-native-nitro-modules ${nitroVersion} is not supported; " +
+      "install ${nitroCompat.minimum} or newer."
+  )
+} else {
+  if (compareVersions(nitroTuple, versionTuple(nitroCompat.modernFrom)) < 0) {
+    nitrogenDir = "generated-legacy"
+  }
+  if (compareVersions(nitroTuple, versionTuple(nitroCompat.newestTested)) > 0) {
+    logger.warn("[@rs-native-kit/security] react-native-nitro-modules ${nitroVersion} is newer than the newest tested version (${nitroCompat.newestTested}).")
+  }
+}
+logger.info("[@rs-native-kit/security] react-native-nitro-modules ${nitroVersion} -> nitrogen/${nitrogenDir}")
+
 apply plugin: "com.android.library"
 apply plugin: "kotlin-android"
-apply from: '../nitrogen/generated/android/rsnativekit_security+autolinking.gradle'
+apply from: "../nitrogen/${nitrogenDir}/android/rsnativekit_security+autolinking.gradle"
 
 apply plugin: "com.facebook.react"
 
@@ -55,7 +110,7 @@ android {
     externalNativeBuild {
       cmake {
         cppFlags "-frtti -fexceptions -Wall -fstack-protector-all"
-        arguments "-DANDROID_STL=c++_shared", "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON"
+        arguments "-DANDROID_STL=c++_shared", "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON", "-DRS_NITROGEN_DIR=${nitrogenDir}"
         abiFilters (*reactNativeArchitectures())
 
         buildTypes {

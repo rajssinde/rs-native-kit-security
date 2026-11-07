@@ -9,6 +9,21 @@ on:
   merge_group:
     types:
       - checks_requested
+  schedule:
+    # Weekly, so a new react-native-nitro-modules release is tested even when
+    # nobody pushes.
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # Patch releases covering every supported Nitro minor (see nitro-compat.json).
+  NITRO_COMPAT_VERSIONS: 0.32.2 0.33.9 0.34.1 0.35.10 0.36.5 0.37.1
+  # Last version of each nitrogen tree plus the first modern one; enough for the
+  # far more expensive macOS runners.
+  NITRO_COMPAT_VERSIONS_IOS: 0.32.2 0.34.1 0.35.10 0.37.1
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -168,6 +183,85 @@ jobs:
       - name: Run Android native unit tests
         working-directory: example/android
         run: ./gradlew :rs-native-kit_security:testDebugUnitTest
+
+  nitro-compat-android:
+    # The shipped bindings must compile against every supported
+    # react-native-nitro-modules range (nitro-compat.json), plus whatever is newest
+    # on npm today so a breaking Nitro release is caught before users hit it.
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      - name: Setup
+        uses: ./.github/actions/setup
+
+      - name: Generate nitrogen code (modern + legacy trees)
+        run: yarn nitrogen
+
+      - name: Install JDK
+        uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Finalize Android SDK
+        run: |
+          /bin/bash -c "yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null"
+
+      - name: Cache Gradle
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: |
+            ~/.gradle/wrapper
+            ~/.gradle/caches
+          key: ${{ runner.os }}-gradle-${{ hashFiles('example/android/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Build against each Nitro runtime
+        env:
+          JAVA_OPTS: "-XX:MaxHeapSize=6g"
+        run: |
+          # Word splitting of NITRO_COMPAT_VERSIONS is intended.
+          scripts/nitro-compat-matrix.sh android $NITRO_COMPAT_VERSIONS \
+            "$(npm view react-native-nitro-modules version)"
+
+  nitro-compat-ios:
+    # Same check as nitro-compat-android for the podspec's tree selection. Kept
+    # off pull requests because each version is a full release build on macOS.
+    if: github.event_name != 'pull_request' && github.event_name != 'merge_group'
+    runs-on: macos-latest
+
+    env:
+      XCODE_VERSION: 26
+      RCT_USE_RN_DEP: 1
+      RCT_USE_PREBUILT_RNCORE: 1
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      - name: Setup
+        uses: ./.github/actions/setup
+
+      - name: Generate nitrogen code (modern + legacy trees)
+        run: yarn nitrogen
+
+      - name: Use appropriate Xcode version
+        uses: maxim-lobanov/setup-xcode@60606e260d2fc5762a71e64e74b2174e8ea3c8bd # v1.6.0
+        with:
+          xcode-version: ${{ env.XCODE_VERSION }}
+
+      - name: Install bundler gems
+        working-directory: example
+        run: bundle install
+
+      - name: Build against each Nitro runtime
+        run: |
+          scripts/nitro-compat-matrix.sh ios $NITRO_COMPAT_VERSIONS_IOS \
+            "$(npm view react-native-nitro-modules version)"
 
   build-ios:
     runs-on: macos-latest

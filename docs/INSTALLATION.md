@@ -7,7 +7,7 @@
 | React Native | 0.72 (New Architecture only — see [FAQ](FAQ.md#does-this-work-on-the-old-architecture)) |
 | Android | API 24 (Android 7.0) |
 | iOS | 15.1 |
-| `react-native-nitro-modules` | ^0.36 |
+| `react-native-nitro-modules` | 0.32.0 or newer (tested up to 0.37) — see [Nitro version support](#nitro-version-support) |
 
 ## 1. Install the package
 
@@ -17,7 +17,19 @@ npm install @rs-native-kit/security react-native-nitro-modules
 yarn add @rs-native-kit/security react-native-nitro-modules
 ```
 
-`react-native-nitro-modules` is a required **peer dependency** — this library's native module is built on it.
+`react-native-nitro-modules` is a required **peer dependency** — this library's native module is built on it. Use whichever supported version the rest of your app already uses; you don't need to change it for this library.
+
+### Nitro version support
+
+Code generated for Nitro only compiles against a matching range of the `react-native-nitro-modules` runtime: Nitro 0.35 changed how Android native objects are built, so no single set of bindings covers both sides. This package ships two:
+
+| Your `react-native-nitro-modules` | Bindings used |
+|---|---|
+| 0.35.0 and newer | `nitrogen/generated` |
+| 0.32.0 – 0.34.x | `nitrogen/generated-legacy` |
+| 0.31.x and older | not supported — the build stops with a message asking you to upgrade |
+
+The right set is picked automatically at build time (Gradle and CocoaPods read your installed version); there's nothing to configure. Versions newer than the newest one tested (see [`nitro-compat.json`](../nitro-compat.json)) build with a warning. Every supported range is built in CI on each change, along with the newest release on npm.
 
 ## 2. iOS
 

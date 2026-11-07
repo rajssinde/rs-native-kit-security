@@ -7,6 +7,10 @@
       "env": ["ANDROID_HOME", "ORG_GRADLE_PROJECT_newArchEnabled"],
       "inputs": [
         "package.json",
+        "$TURBO_ROOT$/nitro.json",
+        "$TURBO_ROOT$/nitro-compat.json",
+        "$TURBO_ROOT$/nitrogen/**",
+        "$TURBO_ROOT$/scripts/nitrogen-legacy.mjs",
         "android",
         "!android/build",
         "src/**/*.ts",
@@ -28,6 +32,10 @@
       ],
       "inputs": [
         "package.json",
+        "$TURBO_ROOT$/nitro.json",
+        "$TURBO_ROOT$/nitro-compat.json",
+        "$TURBO_ROOT$/nitrogen/**",
+        "$TURBO_ROOT$/scripts/nitrogen-legacy.mjs",
         "*.podspec",
         "ios",
         "src/**/*.ts",
