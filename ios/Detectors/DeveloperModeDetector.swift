@@ -8,50 +8,82 @@ final class DeveloperModeDetector {
   /// iOS has no public API for "Developer Mode" the way Android does.
   /// Best-effort proxy: an `embedded.mobileprovision` is bundled with
   /// development/ad-hoc/enterprise builds but never with App Store builds,
-  /// so its presence is a reasonable (if imperfect) stand-in.
-  func isDeveloperModeEnabled() -> Bool {
-    guard let provisioningPath = Bundle.main.path(forResource: "embedded", ofType: "mobileprovision") else {
-      return false
+  /// so its presence is a weak (low-confidence) stand-in.
+  func checkDeveloperMode() -> NativeDetectionResult {
+    Detection.run { d in
+      d.signal("EMBEDDED_PROVISIONING_PROFILE", .low) {
+        Bundle.main.path(forResource: "embedded", ofType: "mobileprovision") != nil
+      }
     }
-    return FileManager.default.fileExists(atPath: provisioningPath)
-  }
-
-  /// USB debugging (ADB) has no iOS equivalent — Xcode uses a paired
-  /// lockdown/trust relationship, not a toggleable device setting. Always
-  /// `false`; documented as a platform gap rather than silently omitted.
-  func isUsbDebuggingEnabled() -> Bool {
-    return false
   }
 
   /// The classic Apple-documented `sysctl(KERN_PROC)` technique
   /// (Technical Q&A QA1361): inspect this process's own `kinfo_proc` and
   /// check the `P_TRACED` flag.
-  func isDebuggerAttached() -> Bool {
+  func checkDebugger() -> NativeDetectionResult {
+    Detection.run { d in
+      d.signal("PTRACE_TRACED", .high) { try isDebuggerAttached() }
+      #if !targetEnvironment(simulator)
+      // Apps launched from the home screen are children of launchd (pid 1);
+      // launched by debugserver/Xcode, they're its child instead. Catches a
+      // debugger that hid P_TRACED.
+      d.signal("PARENT_NOT_LAUNCHD", .medium) { getppid() != 1 }
+      // The kernel's own record that a debugger attached, read with a raw
+      // csops syscall: survives the debugger detaching or clearing P_TRACED.
+      d.signal("CODE_SIGNING_DEBUGGED", .high) {
+        let flags = rs_raw_cs_status()
+        guard flags >= 0 else { throw DetectionError("csops(CS_OPS_STATUS) failed") }
+        return flags & csDebugged != 0
+      }
+      #endif
+    }
+  }
+
+  func isDebuggerAttached() throws -> Bool {
     var info = kinfo_proc()
     var size = MemoryLayout<kinfo_proc>.stride
     var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, getpid()]
 
-    let result = sysctl(&mib, UInt32(mib.count), &info, &size, nil, 0)
-    guard result == 0 else { return false }
-
+    guard sysctl(&mib, UInt32(mib.count), &info, &size, nil, 0) == 0 else {
+      throw DetectionError("sysctl(KERN_PROC) failed: errno \(errno)")
+    }
     return (info.kp_proc.p_flag & P_TRACED) != 0
   }
 
-  /// iOS has no direct "mock location provider" concept like Android.
-  /// Best-effort: if Core Location has already delivered a location fix
-  /// with `sourceInformation.isSimulatedBySoftware` set (iOS 15+), that's a
-  /// strong signal; otherwise this conservatively reports `false` rather
-  /// than requesting location permission just to check.
-  func isMockLocationEnabled() -> Bool {
+  /// iOS has no "mock location provider" setting like Android. If Core
+  /// Location has already delivered a fix with
+  /// `sourceInformation.isSimulatedBySoftware` set (iOS 15+), that's a strong
+  /// signal. Without location permission or a fix there is nothing to inspect,
+  /// which is reported as a low-confidence "not detected" — this SDK never
+  /// requests location permission just to run a check.
+  func checkMockLocation() -> NativeDetectionResult {
     #if canImport(CoreLocation) && os(iOS)
-    guard #available(iOS 15.0, *) else { return false }
-    guard CLLocationManager().authorizationStatus == .authorizedWhenInUse
-      || CLLocationManager().authorizationStatus == .authorizedAlways else {
-      return false
+    let manager = onMainThread { CLLocationManager() }
+    let status = manager.authorizationStatus
+    guard status == .authorizedWhenInUse || status == .authorizedAlways else {
+      return lowConfidenceClean("location permission not granted; nothing to inspect")
     }
-    return CLLocationManager().location?.sourceInformation?.isSimulatedBySoftware ?? false
+    guard let location = manager.location else {
+      return lowConfidenceClean("no cached location fix to inspect")
+    }
+    let simulated = location.sourceInformation?.isSimulatedBySoftware ?? false
+    return Detection.run { d in
+      d.signal("SIMULATED_LOCATION", .high) { simulated }
+    }
     #else
-    return false
+    return Detection.unsupported()
     #endif
   }
+
+  private func lowConfidenceClean(_ note: String) -> NativeDetectionResult {
+    NativeDetectionResult(status: .notDetected, reasons: [], confidence: .low, error: note)
+  }
+
+  /// `CLLocationManager` must be created on a thread with a run loop.
+  private func onMainThread<T>(_ work: () -> T) -> T {
+    Thread.isMainThread ? work() : DispatchQueue.main.sync(execute: work)
+  }
 }
+
+/// `CS_DEBUGGED` from xnu's `cs_blobs.h`.
+private let csDebugged: Int64 = 0x1000_0000

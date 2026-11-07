@@ -1,38 +1,78 @@
 import type { HybridObject } from 'react-native-nitro-modules';
 
 /**
- * Raw, native-side detection results. Intentionally flat/primitive-only so it
- * maps cleanly to Kotlin/Swift structs via nitrogen codegen. The public,
- * ergonomic `SecurityChecks` type (src/types) is derived from this shape on
- * the JS side.
+ * Outcome of one detector:
+ * - `detected`: at least one signal fired — see `reasons`.
+ * - `not_detected`: every signal ran and none fired. Never proof of safety:
+ *   a capable attacker can hide from on-device checks.
+ * - `unsupported`: the concept doesn't exist on this platform (e.g. root on iOS).
+ * - `not_configured`: the check needs app-supplied config (e.g. an expected
+ *   signature hash) that wasn't provided, so nothing was verified.
+ * - `error`: the detector failed to run; its outcome is unknown.
  */
+export type NativeDetectionStatus =
+  'detected' | 'not_detected' | 'unsupported' | 'not_configured' | 'error';
+
+/**
+ * How much the result can be trusted. `detected` takes the strongest fired
+ * signal's confidence. `not_detected` is at most `medium` (hiding tools exist)
+ * and drops to `low` when some of its signals failed to run.
+ */
+export type NativeConfidence = 'low' | 'medium' | 'high';
+
+export interface NativeDetectionResult {
+  status: NativeDetectionStatus;
+  /** Machine-readable reason codes (e.g. `SU_BINARY_FOUND`) for every signal that fired. */
+  reasons: string[];
+  confidence: NativeConfidence;
+  /** Failure details for signals that couldn't run (set for `error`, and for partial failures). */
+  error?: string;
+}
+
+/** One result per check; keys match `SecurityCheckKey` on the JS side. */
 export interface NativeSecurityChecks {
-  root: boolean;
-  jailbreak: boolean;
-  emulator: boolean;
-  developerMode: boolean;
-  usbDebugging: boolean;
-  vpn: boolean;
-  proxy: boolean;
-  overlay: boolean;
-  frida: boolean;
-  xposed: boolean;
-  lsposed: boolean;
-  magisk: boolean;
-  busybox: boolean;
-  mockLocation: boolean;
-  hookDetected: boolean;
-  tampered: boolean;
-  signatureValid: boolean;
-  sslPinningSupported: boolean;
-  screenRecording: boolean;
-  screenCaptured: boolean;
-  debuggerAttached: boolean;
+  root: NativeDetectionResult;
+  magisk: NativeDetectionResult;
+  busybox: NativeDetectionResult;
+  jailbreak: NativeDetectionResult;
+  emulator: NativeDetectionResult;
+  developerMode: NativeDetectionResult;
+  usbDebugging: NativeDetectionResult;
+  debugger: NativeDetectionResult;
+  mockLocation: NativeDetectionResult;
+  vpn: NativeDetectionResult;
+  proxy: NativeDetectionResult;
+  screenRecording: NativeDetectionResult;
+  screenCapture: NativeDetectionResult;
+  overlay: NativeDetectionResult;
+  hooks: NativeDetectionResult;
+  frida: NativeDetectionResult;
+  xposed: NativeDetectionResult;
+  lsposed: NativeDetectionResult;
+  tampering: NativeDetectionResult;
+  signature: NativeDetectionResult;
+}
+
+export interface NativeScanOptions {
+  /**
+   * Known-good signers for the running platform — Android: signing
+   * certificate SHA-256 (hex or base64); iOS: 10-character Team ID. Empty →
+   * the `signature` check reports `not_configured`. Several entries support
+   * key rotation and per-environment builds.
+   */
+  expectedSigners: string[];
+}
+
+export interface NativePinnedDomain {
+  hostname: string;
+  /** Base64 SHA-256 SPKI hashes (no `sha256/` prefix); at least two. */
+  pins: string[];
+  includeSubdomains: boolean;
 }
 
 export interface NativeScanResult {
   checks: NativeSecurityChecks;
-  reasons: string[];
+  durationMs: number;
 }
 
 /**
@@ -51,48 +91,105 @@ export interface Security extends HybridObject<{
   android: 'kotlin';
 }> {
   // --- Root (Android) -------------------------------------------------
-  isRooted(): Promise<boolean>;
-  isMagiskDetected(): Promise<boolean>;
-  isBusyBoxDetected(): Promise<boolean>;
+  checkRoot(): Promise<NativeDetectionResult>;
+  checkMagisk(): Promise<NativeDetectionResult>;
+  checkBusyBox(): Promise<NativeDetectionResult>;
 
   // --- Jailbreak (iOS) --------------------------------------------------
-  isJailbroken(): Promise<boolean>;
+  checkJailbreak(): Promise<NativeDetectionResult>;
 
   // --- Emulator / Simulator ----------------------------------------------
-  isEmulator(): Promise<boolean>;
+  checkEmulator(): Promise<NativeDetectionResult>;
 
   // --- Developer / debug state --------------------------------------------
-  isDeveloperModeEnabled(): Promise<boolean>;
-  isUsbDebuggingEnabled(): Promise<boolean>;
-  isDebuggerAttached(): Promise<boolean>;
-  isMockLocationEnabled(): Promise<boolean>;
+  checkDeveloperMode(): Promise<NativeDetectionResult>;
+  checkUsbDebugging(): Promise<NativeDetectionResult>;
+  checkDebugger(): Promise<NativeDetectionResult>;
+  checkMockLocation(): Promise<NativeDetectionResult>;
 
   // --- Network -------------------------------------------------------------
-  isVpnConnected(): Promise<boolean>;
-  isProxyEnabled(): Promise<boolean>;
+  checkVpn(): Promise<NativeDetectionResult>;
+  checkProxy(): Promise<NativeDetectionResult>;
 
   // --- Screen ----------------------------------------------------------------
-  isScreenRecording(): Promise<boolean>;
-  isScreenCaptured(): Promise<boolean>;
+  checkScreenRecording(): Promise<NativeDetectionResult>;
+  checkScreenCapture(): Promise<NativeDetectionResult>;
 
   // --- Overlay (Android) --------------------------------------------------------
-  hasOverlayPermission(): Promise<boolean>;
+  checkOverlay(): Promise<NativeDetectionResult>;
 
   // --- Hooking frameworks --------------------------------------------------------
-  isHookDetected(): Promise<boolean>;
-  isFridaDetected(): Promise<boolean>;
-  isXposedDetected(): Promise<boolean>;
-  isLSPosedDetected(): Promise<boolean>;
+  checkHooks(): Promise<NativeDetectionResult>;
+  checkFrida(): Promise<NativeDetectionResult>;
+  checkXposed(): Promise<NativeDetectionResult>;
+  checkLSPosed(): Promise<NativeDetectionResult>;
 
   // --- Integrity / tamper / signature ----------------------------------------------
-  isTampered(): Promise<boolean>;
-  getAppSignatureHash(): Promise<string>;
-  verifyAppSignature(expectedSignatureHash: string): Promise<boolean>;
-  verifyApkIntegrity(expectedSha256: string): Promise<boolean>;
-  isSslPinningSupported(): Promise<boolean>;
+  checkTampering(): Promise<NativeDetectionResult>;
+  /** `detected` = the app's signer matches none of `expectedSigners` (see `NativeScanOptions`). */
+  checkSignature(expectedSigners: string[]): Promise<NativeDetectionResult>;
+  /** Android: `detected` = base APK SHA-256 differs from `expectedSha256`. iOS: `unsupported`. */
+  checkApkIntegrity(expectedSha256: string): Promise<NativeDetectionResult>;
+  /** Android: signing certificate SHA-256 (lowercase hex). iOS: Team ID from the code signature. */
+  getSigningIdentity(): Promise<string>;
+
+  // --- Protection ------------------------------------------------------------------
+
+  /**
+   * Android: `FLAG_SECURE` on every activity (screenshots/recordings black,
+   * hidden in recents). iOS: covers the app while the screen is captured and
+   * in the app switcher. Resolves whether protection is active.
+   */
+  setScreenCaptureProtection(enabled: boolean): Promise<boolean>;
+  /**
+   * Android: hides other apps' overlays while this app is in front (12+) and
+   * drops touches through overlays. iOS: resolves `false` (no overlays).
+   */
+  setOverlayProtection(enabled: boolean): Promise<boolean>;
+
+  // --- SSL pinning ---------------------------------------------------------------------
+
+  /**
+   * Enforces public-key pinning for the app's React Native networking
+   * (`fetch`/XHR): Android via OkHttp `CertificatePinner` on RN's client
+   * factory, iOS via TrustKit. Call once, before the first request.
+   */
+  enableSslPinning(domains: NativePinnedDomain[]): Promise<void>;
+
+  // --- Attestation: Play Integrity (Android) -----------------------------------------
+  // Each method rejects on the other platform.
+
+  /** Warms up a Standard Integrity token provider for this Google Cloud project. */
+  prepareIntegrityToken(cloudProjectNumber: number): Promise<void>;
+  /**
+   * Standard Integrity token bound to `requestData`: the token's `requestHash`
+   * is the lowercase hex SHA-256 of `requestData`, which the server recomputes.
+   */
+  requestIntegrityToken(requestData: string): Promise<string>;
+
+  // --- Attestation: Key Attestation (Android) ----------------------------------------
+
+  /**
+   * Base64 DER certificate chain (leaf first) for a fresh hardware key whose
+   * attestation is bound to `challenge` (UTF-8, at most 128 bytes).
+   */
+  requestKeyAttestation(challenge: string): Promise<string[]>;
+
+  // --- Attestation: App Attest (iOS 14+) ---------------------------------------------
+
+  isAppAttestSupported(): Promise<boolean>;
+  /** Creates a new hardware-backed key; resolves its `keyId`. Persist it securely. */
+  generateAppAttestKey(): Promise<string>;
+  /** Base64 attestation object for `keyId`; `clientDataHash` = SHA-256 of `challenge`. */
+  attestAppAttestKey(keyId: string, challenge: string): Promise<string>;
+  /** Base64 assertion for `keyId`; `clientDataHash` = SHA-256 of `clientData`. */
+  generateAppAttestAssertion(
+    keyId: string,
+    clientData: string
+  ): Promise<string>;
 
   // --- Aggregate scan --------------------------------------------------------------
-  scan(): Promise<NativeScanResult>;
+  scan(options: NativeScanOptions): Promise<NativeScanResult>;
 
   // --- Event system ------------------------------------------------------------------
   setEventListener(listener: (event: NativeSecurityEvent) => void): void;

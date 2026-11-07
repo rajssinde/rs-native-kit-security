@@ -13,19 +13,21 @@ This SDK is designed to detect **opportunistic and semi-sophisticated** threats:
 
 It is **not** designed to stop a well-resourced, targeted attacker who statically patches the app binary to always return "not detected" — no client-side check can, because the attacker controls the exact process running the check. For that threat class, use:
 
-- **Server-side attestation**: [Android Play Integrity API](https://developer.android.com/google/play/integrity) and [Apple App Attest](https://developer.apple.com/documentation/devicecheck)/DeviceCheck. These are cryptographically anchored to the OS/hardware and cannot be spoofed by patching your app — they're the correct tool for a hard guarantee, and this SDK is complementary to them, not a replacement.
-- **Certificate/public-key pinning** enforced in your networking layer (this SDK's `ssl/` helpers assist with building the pin config, but the actual enforcement must live in OkHttp/`URLSession`).
+- **Server-side attestation** — built in: see [Attestation](ATTESTATION.md) and the [`server/`](../server/README.md) verifier. [Android Play Integrity API](https://developer.android.com/google/play/integrity) and [Apple App Attest](https://developer.apple.com/documentation/devicecheck)/DeviceCheck. These are cryptographically anchored to the OS/hardware and cannot be spoofed by patching your app — they're the correct tool for a hard guarantee, and this SDK is complementary to them, not a replacement.
+- **Certificate/public-key pinning**: `enableSslPinning()` enforces it on React Native's networking (see [API Reference](API.md#ssl-pinning) for coverage). Pinning stops a network attacker; it doesn't stop someone who controls the device, who can hook the check out — that's what attestation is for.
 - **Server-side risk scoring** that combines this SDK's client-reported signal with request-pattern anomaly detection, device fingerprinting, and behavioral signals you can't get from any client SDK.
 
 ## What "zero-config" checks can and can't tell you
 
-- `scan()`'s `signatureValid` is always `true` in the default, zero-config call — there is no "known good" hash to compare against without you supplying one. **Call `verifyAppSignature(expectedHash)` with a hash you pin at build time for an authoritative signature check.**
-- `isTampered()` is a heuristic (debuggable/development-signed build detection), not a cryptographic guarantee. It will not catch a competently repackaged app re-signed with a valid certificate — see [Integrity checks](#integrity-checks) below.
+- Without `configure({ expectedSigners })`, `scan()` reports `checks.signature` as `not_configured` and lists it in `report.notConfigured` — it never claims a signature it didn't verify is valid. **Configure expected signers for every production build.**
+- A check that fails to run reports `status: 'error'`. `scan()` lists it in `failed`, sets `complete: false`, makes `secure` false, and by default scores it like a detection (`failedCheckPenalty`, fail closed).
+- `not_detected` is at most `medium` confidence: on-device checks can be hidden from. Treat it as absence of evidence, not evidence of safety.
+- `checkTampering()` is a heuristic (a debuggable, sideloaded, LSPatch-repackaged, development-signed, cracked or decrypted-and-reinstalled *release* build; `unsupported` in debug builds), not a cryptographic guarantee. It will not catch a competently repackaged app re-signed with a valid certificate — see [Integrity checks](#integrity-checks) below.
 
 ## Integrity checks
 
-- **Android** reads the real signing certificate via `PackageManager` (`GET_SIGNING_CERTIFICATES`), so `getAppSignatureHash()`/`verifyAppSignature()` are a genuine cryptographic fingerprint of the installed APK's signer.
-- **iOS has no equivalent runtime API.** Apple's Code Signing Services (`SecStaticCodeCheckValidity` and friends) are **macOS-only** — they don't exist in the iOS SDK at all, and there's no other public API to read your own signing certificate from inside a running iOS app (by design — the OS enforces code signing before your code ever executes, so it doesn't need to expose a re-verification API to you). This SDK's iOS `getAppSignatureHash()` hashes the embedded provisioning profile (Development/Ad Hoc/Enterprise builds) or the bundle's `CodeResources` manifest (App Store builds) as a practical fingerprint of "did this exact build's signing identity change" — it is **not** cryptographic proof of signature validity the way the Android check is. For a hard iOS integrity guarantee, use App Attest.
+- **Android** reads the current signing certificate via `PackageManager` (`GET_SIGNING_CERTIFICATES`, current signers, so key rotation is handled), so `checkSignature()` compares a genuine fingerprint of the installed APK's signer. With Play App Signing, the expected value is Google's app-signing key from the Play Console, not your upload key.
+- **iOS has no API for an app to read its own signing certificate**, and App Store binaries are re-signed with Apple's certificate, so a certificate hash would be identical for every App Store app. What does identify who built the app is the **Team ID** in the signed entitlements of the app's own code signature (`application-identifier` = `TEAMID.bundle.id`) — re-signing an IPA under another account changes it. `checkSignature()` parses that from the app binary's `LC_CODE_SIGNATURE` and compares it to the Team IDs you configure. It's a strong local signal, but an attacker who patches the comparison defeats it; for a guarantee the device can't fake, use App Attest.
 
 ## Event system: push vs. poll
 
@@ -33,15 +35,19 @@ Real OS push sources (accurate, event-driven, no polling latency):
 
 | Event | Android | iOS |
 |---|---|---|
-| `SCREENSHOT` | `MediaStore` `ContentObserver` | `UIApplication.userDidTakeScreenshotNotification` |
-| `SCREEN_RECORDING` | — (polled) | `UIScreen.capturedDidChangeNotification` |
+| `SCREENSHOT` | Android 14+: `Activity.ScreenCaptureCallback`. Older: `MediaStore` observer, confirmed screenshots only (needs media read permission) | `UIApplication.userDidTakeScreenshotNotification` |
+| `SCREEN_RECORDING` | Android 15+: `WindowManager` screen-recording callback. Older: not available | `UIScreen.capturedDidChangeNotification` |
 | `VPN_CONNECTED` / `PROXY_ENABLED` | `ConnectivityManager.NetworkCallback` | — (polled) |
 
 Everything else (`ROOT_DETECTED`, `JAILBREAK_DETECTED`, `HOOK_DETECTED`, `DEBUGGER`, `TAMPER`) is re-evaluated on a ~4-second poll and only emitted on a false→true transition, because Android/iOS don't expose a push API for "root state changed" or "a debugger just attached." A 4-second detection latency is the tradeoff for not running detection logic continuously on a tight loop (battery/CPU).
 
+## Hook-resistant probes
+
+Root- and jailbreak-hiding tools work by hooking the APIs an app uses to look at the system: `java.io.File`, `FileManager`, and libc's `access`/`stat`/`open`. On arm64 this SDK also probes files with **raw system calls** (`svc` on Android, `svc #0x80` on iOS), which none of those hooks see. It also reads `/proc` the same way on Android. When a raw probe finds something the regular API claims isn't there, the result is `FILE_API_HOOKED`: proof a hiding tool is active, often stronger evidence than the file itself. Kernel-level hiding (e.g. Magisk mount namespaces, KernelSU) can still defeat this.
+
 ## Platform asymmetry is intentional, not a bug
 
-Several checks are meaningful on one platform and hard-coded `false`/`true` on the other (`isRooted`/`isJailbroken`, `hasOverlayPermission`, `isXposedDetected`, etc. — see the [API reference](API.md) table). This SDK never fabricates a plausible-looking answer for a concept that doesn't exist on a platform; it reports the honest "not applicable" value instead of guessing.
+Several checks are meaningful on only one platform (`checkRoot`/`checkJailbreak`, `checkOverlay`, `checkXposed`, etc. — see the [API reference](API.md) table). On the other platform they report `status: 'unsupported'` rather than a plausible-looking `false`, and never add to the risk score.
 
 ## Web/unsupported platforms
 

@@ -1,4 +1,4 @@
-import type { RiskThresholds, RiskWeights } from '../types';
+import type { RiskThresholds, RiskWeights, SecurityCheckKey } from '../types';
 
 /**
  * Default per-check weights. Values mirror the examples from the product
@@ -8,26 +8,25 @@ import type { RiskThresholds, RiskWeights } from '../types';
  */
 export const DEFAULT_RISK_WEIGHTS: RiskWeights = {
   root: 30,
+  magisk: 40,
+  busybox: 15,
   jailbreak: 30,
   emulator: 25,
   developerMode: 10,
   usbDebugging: 15,
+  debugger: 20,
+  mockLocation: 15,
   vpn: 5,
   proxy: 10,
+  screenRecording: 15,
+  screenCapture: 5,
   overlay: 20,
+  hooks: 50,
   frida: 50,
   xposed: 45,
   lsposed: 45,
-  magisk: 40,
-  busybox: 15,
-  mockLocation: 15,
-  hookDetected: 50,
-  tampered: 50,
-  signatureValid: 60, // triggered when signature is INVALID (see riskEngine.ts)
-  sslPinningSupported: 0, // informational only — never penalizes
-  screenRecording: 15,
-  screenCaptured: 5,
-  debuggerAttached: 20,
+  tampering: 50,
+  signature: 60,
 };
 
 export const DEFAULT_RISK_THRESHOLDS: RiskThresholds = {
@@ -35,3 +34,16 @@ export const DEFAULT_RISK_THRESHOLDS: RiskThresholds = {
   high: 50,
   critical: 75,
 };
+
+export const DEFAULT_FAILED_CHECK_PENALTY = 1;
+
+/**
+ * Checks that report the same underlying threat. A group contributes only
+ * its highest-weighted triggered member: one Frida detection fires both
+ * `frida` and the `hooks` umbrella, and Magisk implies root, so summing them
+ * would double-count a single finding.
+ */
+export const RISK_GROUPS: readonly (readonly SecurityCheckKey[])[] = [
+  ['hooks', 'frida', 'xposed', 'lsposed'],
+  ['root', 'magisk', 'busybox'],
+];

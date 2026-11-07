@@ -1,116 +1,126 @@
 package com.margelo.nitro.rsnativekit.security.detectors
 
 import android.content.Context
-import android.content.pm.PackageManager
 import android.os.Build
+import com.margelo.nitro.rsnativekit.security.NativeConfidence
+import com.margelo.nitro.rsnativekit.security.NativeDetectionResult
+import com.margelo.nitro.rsnativekit.security.util.NativeChecks
 import com.margelo.nitro.rsnativekit.security.util.ShellUtils
 
 /**
  * Android root detection using multiple independent, individually-weak
- * signals — no single check is authoritative, so [isRooted] treats "two or
- * more distinct signals fired" as strong evidence, while [reasons] still
- * surfaces every individual signal for audit logging.
+ * signals. The result is `detected` when any signal fires; `reasons` lists
+ * every signal that did, for audit logging.
+ *
+ * `su` is only located, never executed: running `su` on a rooted device pops
+ * a superuser-grant prompt in front of the user.
  */
 internal class RootDetector(private val context: Context) {
-
-  /** Known root-management / su-provider app packages. */
-  private val rootPackages = arrayOf(
-    "com.topjohnwu.magisk",
-    "com.noshufou.android.su",
-    "com.noshufou.android.su.elite",
-    "eu.chainfire.supersu",
-    "com.koushikdutta.superuser",
-    "com.thirdparty.superuser",
-    "com.yellowes.su",
-    "com.kingroot.kinguser",
-    "com.kingo.root",
-    "com.smedialink.oneclickroot",
-    "com.zhiqupk.root.global",
-    "com.alephzain.framaroot",
-    "me.phh.superuser",
-    "com.geohot.towelroot",
-    "com.ramdroid.appquarantine"
-  )
 
   private val dangerousProps = mapOf(
     "ro.debuggable" to "1",
     "ro.secure" to "0"
   )
 
-  fun isRooted(): Boolean = reasons().isNotEmpty()
-
-  /** Human-readable reason for every root signal that fired, for `scan()`'s `reasons[]`. */
-  fun reasons(): List<String> {
-    val found = mutableListOf<String>()
-
-    if (ShellUtils.binaryExistsOnCommonPaths("su") || ShellUtils.binaryExistsOnPath("su")) {
-      found += "su binary found on device"
+  fun check(): NativeDetectionResult = Detection.run {
+    signal("SU_BINARY_FOUND", NativeConfidence.HIGH) {
+      ShellUtils.binaryExistsOnCommonPaths("su") ||
+        ShellUtils.binaryExistsOnPath("su") ||
+        ShellUtils.exec(arrayOf("which", "su")) != null
     }
-    if (canExecuteSu()) {
-      found += "su binary is executable"
+    // Same probe below the Java and libc layers that root-hiding tools hook.
+    signal("SU_BINARY_FOUND_NATIVE", NativeConfidence.HIGH) {
+      ShellUtils.COMMON_BIN_PATHS.any { NativeChecks.exists("${it}su") }
     }
-    if (Build.TAGS?.contains("test-keys") == true) {
-      found += "Build.TAGS contains test-keys (custom/dev-signed ROM)"
+    signal("TEST_KEYS_BUILD", NativeConfidence.LOW) { Build.TAGS?.contains("test-keys") == true }
+    signal("DANGEROUS_BUILD_PROPS", NativeConfidence.MEDIUM) { hasDangerousBuildProps() }
+    signal("ROOT_MANAGER_APP", NativeConfidence.MEDIUM) {
+      KnownPackages.isAnyInstalled(context.packageManager, KnownPackages.ROOT_MANAGERS)
     }
-    if (hasDangerousBuildProps()) {
-      found += "ro.debuggable=1 or ro.secure=0 system property detected"
+    signal("SYSTEM_WRITABLE", NativeConfidence.HIGH) {
+      ShellUtils.isWritable("/system") || ShellUtils.isWritable("/system/bin")
     }
-    if (hasRootManagementApp()) {
-      found += "a known root-management app is installed"
+    signal("SELINUX_PERMISSIVE", NativeConfidence.MEDIUM) { isSELinuxPermissive() }
+    signal("SYSTEM_MOUNTED_RW", NativeConfidence.HIGH) { hasReadWriteSystemMount() }
+    // An unlocked bootloader is what Magisk, KernelSU and APatch all need, but
+    // custom-ROM users and developers unlock too — hence medium. Hiding tools
+    // can spoof these properties; Key Attestation reports the real state.
+    signal("BOOTLOADER_UNLOCKED", NativeConfidence.MEDIUM) { isBootloaderUnlocked(NativeChecks::property) }
+    // Systemless root modifies system partitions with mounts rather than
+    // writes, so these name-independent signals catch Magisk, KernelSU and
+    // APatch modules alike — unless DenyList/Shamiko unmounts them for this app.
+    signal("SYSTEM_FILE_FROM_DATA", NativeConfidence.HIGH) {
+      systemMountedFromData(parseMountInfo(ShellUtils.readProcFile("/proc/self/mountinfo")))
     }
-    if (isSystemWritable()) {
-      found += "/system partition is writable (should be read-only)"
-    }
-    if (isSELinuxPermissive()) {
-      found += "SELinux is permissive (should be enforcing)"
-    }
-    if (hasSuspiciousMounts()) {
-      found += "root-hiding bind mount detected in /proc/self/mountinfo"
-    }
-
-    return found
-  }
-
-  private fun canExecuteSu(): Boolean {
-    return ShellUtils.exec(arrayOf("which", "su")) != null ||
-      ShellUtils.exec(arrayOf("su", "-c", "id")) != null
-  }
-
-  private fun hasDangerousBuildProps(): Boolean {
-    val output = ShellUtils.exec(arrayOf("getprop")) ?: return false
-    return dangerousProps.any { (key, value) ->
-      output.contains("[$key]: [$value]")
+    signal("SYSTEM_OVERLAY_MOUNT", NativeConfidence.MEDIUM) {
+      hasSystemOverlayMount(parseMountInfo(ShellUtils.readProcFile("/proc/self/mountinfo")))
     }
   }
 
-  private fun hasRootManagementApp(): Boolean {
-    val pm = context.packageManager
-    return rootPackages.any { pkg -> isPackageInstalled(pm, pkg) }
-  }
-
-  private fun isPackageInstalled(pm: PackageManager, packageName: String): Boolean {
-    return try {
-      pm.getPackageInfo(packageName, 0)
-      true
-    } catch (_: PackageManager.NameNotFoundException) {
-      false
-    }
-  }
-
-  private fun isSystemWritable(): Boolean {
-    return ShellUtils.isWritable("/system") || ShellUtils.isWritable("/system/bin")
-  }
+  private fun hasDangerousBuildProps(): Boolean =
+    dangerousProps.any { (key, value) -> NativeChecks.property(key) == value }
 
   private fun isSELinuxPermissive(): Boolean {
+    // Unreadable on most modern devices (SELinux policy) — fall back to getenforce,
+    // and treat "no answer from either" as not detected rather than an error.
     val status = ShellUtils.readFileOrNull("/sys/fs/selinux/enforce")
       ?: ShellUtils.exec(arrayOf("getenforce"))
     return status?.trim()?.let { it == "0" || it.equals("Permissive", ignoreCase = true) } == true
   }
 
-  private fun hasSuspiciousMounts(): Boolean {
-    val mountInfo = ShellUtils.readFileOrNull("/proc/self/mountinfo") ?: return false
+  /**
+   * Stock devices always mount the system partitions read-only; a `rw` remount
+   * is a classic root modification. Matches the exact mount point and mount
+   * options fields only — a substring match also hits legitimately writable
+   * mounts like `/mnt/vendor/persist` or `/data/vendor`.
+   */
+  private fun hasReadWriteSystemMount(): Boolean {
+    val mountInfo = ShellUtils.readProcFile("/proc/self/mountinfo")
     return mountInfo.lineSequence().any { line ->
-      (line.contains("/system") || line.contains("/vendor")) && line.contains(" rw,")
+      // mountinfo: <id> <parent> <major:minor> <root> <mount point> <options> ...
+      val fields = line.split(' ')
+      fields.size > 5 && fields[4] in SYSTEM_PARTITIONS && "rw" in fields[5].split(',')
     }
   }
 }
+
+internal val SYSTEM_PARTITIONS = setOf("/system", "/vendor", "/product", "/system_ext")
+
+private fun isOnSystemPartition(mountPoint: String) =
+  SYSTEM_PARTITIONS.any { mountPoint == it || mountPoint.startsWith("$it/") }
+
+/** The fields of a `/proc/<pid>/mountinfo` line these checks use. */
+internal data class MountEntry(val device: String, val mountPoint: String, val fsType: String)
+
+internal fun parseMountInfo(mountInfo: String): List<MountEntry> =
+  mountInfo.lineSequence().mapNotNull { line ->
+    // <id> <parent> <major:minor> <root> <mount point> <options> [optional...] - <fstype> <source> <super options>
+    val fields = line.split(' ')
+    val fsType = line.substringAfter(" - ", "").substringBefore(' ')
+    if (fields.size > 4 && fsType.isNotEmpty()) MountEntry(fields[2], fields[4], fsType) else null
+  }.toList()
+
+/**
+ * A mount inside a system partition whose backing device is the `/data`
+ * partition: module files bind-mounted over system files (Magisk's and
+ * KernelSU's "magic mount"). Stock Android serves system files only from the
+ * read-only system images.
+ */
+internal fun systemMountedFromData(mounts: List<MountEntry>): Boolean {
+  val dataDevice = mounts.lastOrNull { it.mountPoint == "/data" }?.device ?: return false
+  return mounts.any { isOnSystemPartition(it.mountPoint) && it.device == dataDevice }
+}
+
+/** overlayfs over a system partition: KernelSU's and APatch's module mounts (and `adb remount` on debug builds). */
+internal fun hasSystemOverlayMount(mounts: List<MountEntry>): Boolean =
+  mounts.any { isOnSystemPartition(it.mountPoint) && it.fsType == "overlay" }
+
+/**
+ * Bootloader unlocked according to the boot properties the bootloader sets.
+ * `verifiedbootstate` is `orange` only when unlocked; `yellow` (a relocked
+ * custom OS like GrapheneOS) is deliberately not flagged.
+ */
+internal fun isBootloaderUnlocked(property: (String) -> String): Boolean =
+  property("ro.boot.flash.locked") == "0" ||
+    property("ro.boot.vbmeta.device_state") == "unlocked" ||
+    property("ro.boot.verifiedbootstate") == "orange"

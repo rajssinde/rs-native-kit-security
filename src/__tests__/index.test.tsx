@@ -1,78 +1,10 @@
 import { describe, expect, it, jest, afterEach } from '@jest/globals';
-import type {
-  Security as NativeSecuritySpec,
-  NativeScanResult,
-} from '../Security.nitro';
-
-type MockNativeSecurity = {
-  [K in keyof NativeSecuritySpec]: NativeSecuritySpec[K] extends (
-    ...args: infer A
-  ) => infer R
-    ? jest.Mock<(...args: A) => R>
-    : NativeSecuritySpec[K];
-};
-
-function createMockNativeSecurity(): MockNativeSecurity {
-  return {
-    name: 'Security',
-    toString: jest.fn(() => '[HybridObject Security]'),
-    equals: jest.fn(() => false),
-    dispose: jest.fn(),
-    isRooted: jest.fn(async () => false),
-    isMagiskDetected: jest.fn(async () => false),
-    isBusyBoxDetected: jest.fn(async () => false),
-    isJailbroken: jest.fn(async () => false),
-    isEmulator: jest.fn(async () => false),
-    isDeveloperModeEnabled: jest.fn(async () => false),
-    isUsbDebuggingEnabled: jest.fn(async () => false),
-    isDebuggerAttached: jest.fn(async () => false),
-    isMockLocationEnabled: jest.fn(async () => false),
-    isVpnConnected: jest.fn(async () => false),
-    isProxyEnabled: jest.fn(async () => false),
-    isScreenRecording: jest.fn(async () => false),
-    isScreenCaptured: jest.fn(async () => false),
-    hasOverlayPermission: jest.fn(async () => false),
-    isHookDetected: jest.fn(async () => false),
-    isFridaDetected: jest.fn(async () => false),
-    isXposedDetected: jest.fn(async () => false),
-    isLSPosedDetected: jest.fn(async () => false),
-    isTampered: jest.fn(async () => false),
-    getAppSignatureHash: jest.fn(async () => 'abc123'),
-    verifyAppSignature: jest.fn(async () => true),
-    verifyApkIntegrity: jest.fn(async () => true),
-    isSslPinningSupported: jest.fn(async () => true),
-    scan: jest.fn<() => Promise<NativeScanResult>>(async () => ({
-      checks: {
-        root: false,
-        jailbreak: false,
-        emulator: false,
-        developerMode: false,
-        usbDebugging: false,
-        vpn: false,
-        proxy: false,
-        overlay: false,
-        frida: false,
-        xposed: false,
-        lsposed: false,
-        magisk: false,
-        busybox: false,
-        mockLocation: false,
-        hookDetected: false,
-        tampered: false,
-        signatureValid: true,
-        sslPinningSupported: true,
-        screenRecording: false,
-        screenCaptured: false,
-        debuggerAttached: false,
-      },
-      reasons: [],
-    })),
-    setEventListener: jest.fn(),
-    removeEventListener: jest.fn(),
-    startMonitoring: jest.fn(),
-    stopMonitoring: jest.fn(),
-  } as unknown as MockNativeSecurity;
-}
+import {
+  createMockNativeSecurity,
+  detected,
+  nativeScan,
+  result,
+} from '../__fixtures__/nativeSecurity';
 
 let mockNativeSecurity = createMockNativeSecurity();
 
@@ -87,95 +19,163 @@ jest.mock('../specs/nativeSecurity', () => ({
 // CJS-targeted babel/jest transform).
 
 const { default: Security, resetRiskEngine } = require('../index');
+const { resetConfig } = require('../config');
+const { Platform } = require('react-native');
+
+const ANDROID_CERT = 'a'.repeat(64);
 
 afterEach(() => {
   mockNativeSecurity = createMockNativeSecurity();
   resetRiskEngine();
+  resetConfig();
 });
 
 describe('Security.scan', () => {
-  it('returns a clean, secure report when nothing is detected', async () => {
+  it('returns a clean, secure, complete report when nothing is detected', async () => {
     const report = await Security.scan();
 
-    expect(report.secure).toBe(true);
-    expect(report.riskLevel).toBe('LOW');
-    expect(report.score).toBe(0);
+    expect(report).toMatchObject({
+      secure: true,
+      complete: true,
+      riskLevel: 'LOW',
+      score: 0,
+      detected: [],
+      failed: [],
+      reasons: [],
+      durationMs: 12,
+    });
     expect(['android', 'ios']).toContain(report.platform);
     expect(typeof report.timestamp).toBe('number');
+    expect(report.checks.root.status).toBe('not_detected');
   });
 
-  it('propagates native reasons and raises the score when checks trigger', async () => {
-    mockNativeSecurity.scan.mockResolvedValue({
-      checks: {
-        root: true,
-        jailbreak: false,
-        emulator: false,
-        developerMode: false,
-        usbDebugging: false,
-        vpn: false,
-        proxy: false,
-        overlay: false,
-        frida: false,
-        xposed: false,
-        lsposed: false,
-        magisk: true,
-        busybox: false,
-        mockLocation: false,
-        hookDetected: false,
-        tampered: false,
-        signatureValid: true,
-        sslPinningSupported: true,
-        screenRecording: false,
-        screenCaptured: false,
-        debuggerAttached: false,
-      },
-      reasons: ['su binary found at /system/xbin/su'],
-    });
+  it('reports detections with their reason codes and raises the score', async () => {
+    mockNativeSecurity.scan.mockResolvedValue(
+      nativeScan({
+        emulator: detected('EMULATOR_QEMU_FILES'),
+        debugger: detected('JDWP_DEBUGGER_ATTACHED'),
+      })
+    );
 
     const report = await Security.scan();
 
-    expect(report.score).toBe(70); // root(30) + magisk(40)
-    expect(report.riskLevel).toBe('HIGH');
+    expect(report.score).toBe(45);
+    expect(report.riskLevel).toBe('MEDIUM');
     expect(report.secure).toBe(false);
-    expect(report.reasons).toContain('su binary found at /system/xbin/su');
-    expect(report.checks.root).toBe(true);
+    expect(report.detected).toEqual(['emulator', 'debugger']);
+    expect(report.reasons).toEqual([
+      'EMULATOR_QEMU_FILES',
+      'JDWP_DEBUGGER_ATTACHED',
+    ]);
+  });
+
+  it('never reports a failed check as clean', async () => {
+    mockNativeSecurity.scan.mockResolvedValue(
+      nativeScan({ frida: result('error', [], { error: 'maps unreadable' }) })
+    );
+
+    const report = await Security.scan();
+
+    expect(report.complete).toBe(false);
+    expect(report.secure).toBe(false);
+    expect(report.failed).toEqual(['frida']);
+    expect(report.checks.frida.error).toBe('maps unreadable');
+  });
+
+  it('treats a malformed native result as an error, not as clean', async () => {
+    const scanResult = nativeScan();
+    (scanResult.checks as unknown as Record<string, unknown>).root = {
+      status: 'probably_fine',
+      reasons: [],
+      confidence: 'high',
+    };
+    mockNativeSecurity.scan.mockResolvedValue(scanResult);
+
+    const report = await Security.scan();
+
+    expect(report.checks.root.status).toBe('error');
+    expect(report.failed).toContain('root');
+  });
+
+  it('passes no expected signers when none are configured, so signature reports not_configured', async () => {
+    mockNativeSecurity.scan.mockResolvedValue(
+      nativeScan({
+        signature: result('not_configured', ['SIGNATURE_HASH_NOT_CONFIGURED']),
+      })
+    );
+
+    const report = await Security.scan();
+
+    expect(mockNativeSecurity.scan).toHaveBeenCalledWith({
+      expectedSigners: [],
+    });
+    expect(report.notConfigured).toEqual(['signature']);
+    expect(report.secure).toBe(true);
+  });
+
+  it('passes the configured signers for the running platform', async () => {
+    Security.configure({
+      expectedSigners: { android: [ANDROID_CERT], ios: ['AB12CD34EF'] },
+    });
+
+    await Security.scan();
+
+    expect(mockNativeSecurity.scan).toHaveBeenCalledWith({
+      expectedSigners: Platform.OS === 'ios' ? ['AB12CD34EF'] : [ANDROID_CERT],
+    });
   });
 });
 
 describe('Security.configureRiskEngine', () => {
   it('changes scoring used by subsequent scan() calls', async () => {
-    mockNativeSecurity.scan.mockResolvedValue({
-      checks: {
-        root: true,
-        jailbreak: false,
-        emulator: false,
-        developerMode: false,
-        usbDebugging: false,
-        vpn: false,
-        proxy: false,
-        overlay: false,
-        frida: false,
-        xposed: false,
-        lsposed: false,
-        magisk: false,
-        busybox: false,
-        mockLocation: false,
-        hookDetected: false,
-        tampered: false,
-        signatureValid: true,
-        sslPinningSupported: true,
-        screenRecording: false,
-        screenCaptured: false,
-        debuggerAttached: false,
-      },
-      reasons: [],
-    });
+    mockNativeSecurity.scan.mockResolvedValue(nativeScan({ root: detected() }));
 
     Security.configureRiskEngine({ weights: { root: 100 } });
     const report = await Security.scan();
 
     expect(report.score).toBe(100);
     expect(report.riskLevel).toBe('CRITICAL');
+  });
+});
+
+describe('individual checks', () => {
+  it('return the converted native result', async () => {
+    mockNativeSecurity.checkFrida.mockResolvedValue(detected('FRIDA_THREAD'));
+
+    await expect(Security.checkFrida()).resolves.toEqual({
+      status: 'detected',
+      reasons: ['FRIDA_THREAD'],
+      confidence: 'high',
+    });
+  });
+
+  it('checkSignature() uses the configured signers unless explicit ones are passed', async () => {
+    Security.configure({
+      expectedSigners: { android: [ANDROID_CERT], ios: ['AB12CD34EF'] },
+    });
+
+    await Security.checkSignature();
+    expect(mockNativeSecurity.checkSignature).toHaveBeenLastCalledWith(
+      Platform.OS === 'ios' ? ['AB12CD34EF'] : [ANDROID_CERT]
+    );
+
+    await Security.checkSignature(['ZZ99YY88XX']);
+    expect(mockNativeSecurity.checkSignature).toHaveBeenLastCalledWith([
+      'ZZ99YY88XX',
+    ]);
+  });
+
+  it('isDetected() is only true for detected results', () => {
+    expect(
+      Security.isDetected({
+        status: 'detected',
+        reasons: ['X'],
+        confidence: 'high',
+      })
+    ).toBe(true);
+    expect(
+      Security.isDetected({ status: 'error', reasons: [], confidence: 'low' })
+    ).toBe(false);
   });
 });
 
@@ -231,7 +231,8 @@ describe('Security event system', () => {
     unsubB();
   });
 
-  it('falls back to TAMPER for an unrecognized native event type', () => {
+  it('drops an unrecognized native event type instead of remapping it to another threat', () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
     const received: unknown[] = [];
     const unsubscribe = Security.addListener((e: unknown) => received.push(e));
 
@@ -239,9 +240,9 @@ describe('Security event system', () => {
       .calls[0]?.[0] as (e: unknown) => void;
     nativeCallback({ type: 'SOMETHING_UNKNOWN', message: 'n/a', timestamp: 1 });
 
-    expect(received).toEqual([
-      { type: 'TAMPER', message: 'n/a', timestamp: 1 },
-    ]);
+    expect(received).toEqual([]);
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
     unsubscribe();
   });
 

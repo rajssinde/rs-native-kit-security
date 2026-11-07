@@ -1,15 +1,9 @@
-import { getNativeSecurity } from '../specs/nativeSecurity';
-
 /**
- * Reports whether the platform's TLS stack supports certificate/public-key
- * pinning (effectively always `true` on Android/iOS). Use the helpers below
- * to build and validate the pin configuration you pass to your networking
- * layer — this SDK does not intercept network traffic itself.
+ * Typed helpers for building and validating the pin set you hand to your
+ * networking layer — this SDK does not intercept network traffic itself.
  */
-export function isSslPinningSupported(): Promise<boolean> {
-  return getNativeSecurity().isSslPinningSupported();
-}
-
+export { enableSslPinning } from './enforce';
+export type { SslPinningOptions } from './enforce';
 export {
   buildCertificatePin,
   isValidPinFormat,

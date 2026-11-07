@@ -1,9 +1,11 @@
-import { getNativeSecurity } from '../specs/nativeSecurity';
+import { runCheck } from '../specs/runCheck';
+import type { DetectionResult } from '../types';
 
 /**
- * Detects Android Emulator/Genymotion/BlueStacks/LDPlayer/Nox/MEmu/generic
- * virtual Android, and the iOS Simulator.
+ * Android: emulator build fingerprints, QEMU files, emulator platform apps
+ * (Genymotion, BlueStacks, Nox, MEmu, LDPlayer), telephony placeholders.
+ * iOS: the Simulator.
  */
-export function isEmulator(): Promise<boolean> {
-  return getNativeSecurity().isEmulator();
+export function checkEmulator(): Promise<DetectionResult> {
+  return runCheck((native) => native.checkEmulator());
 }

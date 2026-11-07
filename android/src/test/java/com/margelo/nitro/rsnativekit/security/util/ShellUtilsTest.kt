@@ -37,6 +37,18 @@ class ShellUtilsTest {
   }
 
   @Test
+  fun `exec returns null when the command runs but exits non-zero`() {
+    // Mirrors `which su` on a stock device: runs fine, prints nothing, exits 1.
+    assertNull(ShellUtils.exec(arrayOf("sh", "-c", "exit 1")))
+  }
+
+  @Test
+  fun `exec returns output larger than the pipe buffer without deadlocking`() {
+    val output = ShellUtils.exec(arrayOf("sh", "-c", "yes a | head -c 200000"), timeoutMs = 5000)
+    assertEquals(200_000, output?.length)
+  }
+
+  @Test
   fun `exec respects a short timeout instead of hanging forever`() {
     val output = ShellUtils.exec(arrayOf("sleep", "5"), timeoutMs = 100)
     assertNull(output)

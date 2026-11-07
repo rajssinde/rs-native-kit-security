@@ -1,9 +1,11 @@
-import { getNativeSecurity } from '../specs/nativeSecurity';
+import { runCheck } from '../specs/runCheck';
+import type { DetectionResult } from '../types';
 
 /**
- * iOS: canonical suspicious-file scan, Cydia URL scheme, sandbox-escape
- * write test, dylib inspection, fork() probe, suspicious env vars.
+ * iOS: jailbreak file scan, Cydia URL scheme, sandbox-escape write test,
+ * tweak-injector dylibs, process-spawn probe, `DYLD_INSERT_LIBRARIES`.
+ * Android: `unsupported`.
  */
-export function isJailbroken(): Promise<boolean> {
-  return getNativeSecurity().isJailbroken();
+export function checkJailbreak(): Promise<DetectionResult> {
+  return runCheck((native) => native.checkJailbreak());
 }

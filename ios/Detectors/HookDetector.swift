@@ -1,10 +1,9 @@
 import Foundation
 
-/// Frida is the dominant iOS instrumentation framework in practice (Xposed/
-/// LSPosed/Substrate are Android-only concepts), so hook detection here
-/// focuses on Frida's well-known fingerprints: its default `frida-server`
-/// listen port, injected dylibs, and its `DYLD_INSERT_LIBRARIES` injection
-/// vector.
+/// Frida is the dominant iOS instrumentation framework in practice, so its
+/// fingerprints get their own check: its default `frida-server` listen port,
+/// injected dylibs, and its `DYLD_INSERT_LIBRARIES` injection vector. The
+/// `hooks` umbrella adds the jailbreak hooking frameworks tweaks run on.
 final class HookDetector {
 
   private let fridaDefaultPorts: [UInt16] = [27042, 27043]
@@ -15,24 +14,83 @@ final class HookDetector {
     "frida-helper"
   ]
 
-  func isFridaDetected() -> Bool {
-    return hasFridaPortOpen() || DylibScanner.anyLoadedImageContains(fridaDylibMarkers) || hasFridaEnvironmentVariable()
+  /// Function-hooking runtimes that jailbreak tweaks inject into apps.
+  private let hookingFrameworkMarkers = [
+    "MobileSubstrate",
+    "CydiaSubstrate",
+    "SubstrateLoader",
+    "libhooker",
+    "libsubstitute",
+    "libellekit",
+    "ElleKit"
+  ]
+
+  func checkFrida() -> NativeDetectionResult {
+    Detection.run { d in
+      d.signal("FRIDA_DYLIB", .high) { DylibScanner.anyLoadedImageContains(fridaDylibMarkers) }
+      d.signal("FRIDA_DYLD_INSERT", .high) {
+        ProcessInfo.processInfo.environment["DYLD_INSERT_LIBRARIES"]?
+          .localizedCaseInsensitiveContains("frida") == true
+      }
+      d.signal("FRIDA_THREAD", .high) {
+        try threadNames().contains { name in fridaThreadMarkers.contains { name.contains($0) } }
+      }
+      // frida-agent / frida-gadget export these even when the library file is renamed.
+      d.signal("FRIDA_SYMBOL", .high) {
+        fridaSymbols.contains { dlsym(rtldDefault, $0) != nil }
+      }
+      // Something listening on Frida's default ports — frida-server may also use custom ports.
+      d.signal("FRIDA_PORT_OPEN", .medium) { fridaDefaultPorts.contains { isPortOpen(port: $0) } }
+    }
   }
 
-  /// Umbrella check — kept distinct from `isFridaDetected` so the API stays
-  /// consistent with Android's `isHookDetected`, even though Frida is
-  /// currently the only iOS-relevant framework this SDK fingerprints.
-  func isAnyHookDetected() -> Bool {
-    return isFridaDetected()
+  /// Umbrella check: Frida plus the jailbreak hooking frameworks.
+  func checkHooks(frida: NativeDetectionResult? = nil) -> NativeDetectionResult {
+    Detection.run { d in
+      d.include(frida ?? checkFrida())
+      d.signal("HOOKING_FRAMEWORK_DYLIB", .high) { DylibScanner.anyLoadedImageContains(hookingFrameworkMarkers) }
+      #if !targetEnvironment(simulator)
+      // A jailbreak file the raw system call sees but FileManager doesn't can
+      // only mean FileManager is hooked to hide it — proof of a hiding tweak.
+      d.signal("FILE_API_HOOKED", .high) {
+        JailbreakDetector.suspiciousPaths.contains { path in
+          rs_raw_path_exists(path) == 1 && !FileManager.default.fileExists(atPath: path)
+        }
+      }
+      #endif
+    }
   }
 
-  private func hasFridaEnvironmentVariable() -> Bool {
-    return ProcessInfo.processInfo.environment["DYLD_INSERT_LIBRARIES"]?
-      .localizedCaseInsensitiveContains("frida") == true
-  }
+  private let fridaThreadMarkers = ["gum-js-loop", "gmain", "gdbus", "frida"]
+  private let fridaSymbols = ["frida_agent_main", "gum_init_embedded"]
+  private let rtldDefault = UnsafeMutableRawPointer(bitPattern: -2) // RTLD_DEFAULT
 
-  private func hasFridaPortOpen() -> Bool {
-    return fridaDefaultPorts.contains { port in isPortOpen(port: port) }
+  /// Names of every pthread in this process (Frida names its threads).
+  private func threadNames() throws -> [String] {
+    var threads: thread_act_array_t?
+    var count: mach_msg_type_number_t = 0
+    guard task_threads(mach_task_self_, &threads, &count) == KERN_SUCCESS, let threads else {
+      throw DetectionError("task_threads failed")
+    }
+    defer {
+      vm_deallocate(
+        mach_task_self_,
+        vm_address_t(UInt(bitPattern: threads)),
+        vm_size_t(Int(count) * MemoryLayout<thread_t>.stride)
+      )
+    }
+    var names: [String] = []
+    for index in 0..<Int(count) {
+      let thread = threads[index]
+      if let pthread = pthread_from_mach_thread_np(thread) {
+        var buffer = [CChar](repeating: 0, count: 64)
+        if pthread_getname_np(pthread, &buffer, buffer.count) == 0 {
+          names.append(String(cString: buffer))
+        }
+      }
+      mach_port_deallocate(mach_task_self_, thread)
+    }
+    return names
   }
 
   private func isPortOpen(port: UInt16, host: String = "127.0.0.1", timeoutMs: Int = 200) -> Bool {

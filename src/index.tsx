@@ -3,9 +3,14 @@ import { getNativeSecurity } from './specs/nativeSecurity';
 import type { NativeSecurityEvent } from './Security.nitro';
 import { defaultRiskEngine } from './risk/riskEngine';
 import { SecurityEventEmitter } from './utils/eventEmitter';
+import { configure, expectedSignersFor, getConfig } from './config';
+import { toDetectionResult, isDetected } from './results';
+import { describeReason, REASON_DESCRIPTIONS } from './reasons';
 import {
+  SECURITY_CHECK_KEYS,
   SecurityUnsupportedPlatformError,
   type RiskEngineConfig,
+  type SecurityChecks,
   type SecurityEvent,
   type SecurityEventListener,
   type SecurityEventType,
@@ -13,33 +18,34 @@ import {
   type SecurityReport,
 } from './types';
 
-import { isRooted, isMagiskDetected, isBusyBoxDetected } from './root';
-import { isJailbroken } from './jailbreak';
-import { isEmulator } from './emulator';
+import { checkRoot, checkMagisk, checkBusyBox } from './root';
+import { checkJailbreak } from './jailbreak';
+import { checkEmulator } from './emulator';
 import {
-  isDeveloperModeEnabled,
-  isUsbDebuggingEnabled,
-  isDebuggerAttached,
-  isMockLocationEnabled,
+  checkDeveloperMode,
+  checkUsbDebugging,
+  checkDebugger,
+  checkMockLocation,
 } from './developerMode';
-import { isVpnConnected } from './vpn';
-import { isProxyEnabled } from './proxy';
-import { hasOverlayPermission } from './overlay';
-import { isScreenRecording, isScreenCaptured } from './screen';
+import { checkVpn } from './vpn';
+import { checkProxy } from './proxy';
+import { checkOverlay } from './overlay';
+import { checkScreenRecording, checkScreenCapture } from './screen';
+import { checkHooks, checkFrida, checkXposed, checkLSPosed } from './hook';
+import { checkTampering, checkApkIntegrity } from './integrity';
+import { checkSignature, getSigningIdentity } from './signature';
+import { setScreenCaptureProtection, setOverlayProtection } from './protection';
 import {
-  isHookDetected,
-  isFridaDetected,
-  isXposedDetected,
-  isLSPosedDetected,
-} from './hook';
-import { isTampered, verifyApkIntegrity } from './integrity';
+  prepareIntegrityToken,
+  requestIntegrityToken,
+  requestKeyAttestation,
+  isAppAttestSupported,
+  generateAppAttestKey,
+  attestAppAttestKey,
+  generateAppAttestAssertion,
+} from './attestation';
 import {
-  getAppSignatureHash,
-  verifyAppSignature,
-  compareAppSignature,
-} from './signature';
-import {
-  isSslPinningSupported,
+  enableSslPinning,
   buildCertificatePin,
   isValidPinFormat,
   isValidPinSet,
@@ -65,19 +71,41 @@ function resolvePlatform(): SecurityPlatform {
   throw new SecurityUnsupportedPlatformError('scan');
 }
 
-function toSecurityEvent(event: NativeSecurityEvent): SecurityEvent {
-  const type = KNOWN_EVENT_TYPES.has(event.type as SecurityEventType)
-    ? (event.type as SecurityEventType)
-    : 'TAMPER';
-
-  return { type, message: event.message, timestamp: event.timestamp };
+/** Unknown native event types are dropped, never remapped to a different threat. */
+function toSecurityEvent(event: NativeSecurityEvent): SecurityEvent | null {
+  if (!KNOWN_EVENT_TYPES.has(event.type as SecurityEventType)) {
+    if (__DEV__) {
+      console.warn(
+        `[@rs-native-kit/security] Ignoring unknown native event type "${event.type}"`
+      );
+    }
+    return null;
+  }
+  return {
+    type: event.type as SecurityEventType,
+    message: event.message,
+    timestamp: event.timestamp,
+  };
 }
 
-/** Full, risk-scored device scan — the primary entry point for most integrations. */
+/**
+ * Full, risk-scored device scan — the primary entry point for most
+ * integrations. Runs every check once on a background thread. A check that
+ * fails to run is reported in `failed` and makes `secure` false; it is never
+ * counted as clean.
+ */
 export async function scan(): Promise<SecurityReport> {
   const platform = resolvePlatform();
-  const { checks, reasons } = await getNativeSecurity().scan();
-  const evaluation = defaultRiskEngine.evaluate(checks, reasons);
+  const timestamp = Date.now();
+  const native = await getNativeSecurity().scan({
+    expectedSigners: expectedSignersFor(platform),
+  });
+
+  const checks = {} as SecurityChecks;
+  for (const key of SECURITY_CHECK_KEYS) {
+    checks[key] = toDetectionResult(native.checks?.[key]);
+  }
+  const evaluation = defaultRiskEngine.evaluate(checks);
 
   return {
     platform,
@@ -85,17 +113,22 @@ export async function scan(): Promise<SecurityReport> {
     riskLevel: evaluation.riskLevel,
     score: evaluation.score,
     checks,
+    detected: evaluation.detected,
+    failed: evaluation.failed,
+    notConfigured: evaluation.notConfigured,
+    complete: evaluation.failed.length === 0,
     reasons: evaluation.reasons,
-    timestamp: Date.now(),
+    durationMs: native.durationMs,
+    timestamp,
   };
 }
 
-/** Overrides the default risk weights/thresholds used by `scan()`. Merges with existing config. */
+/** Overrides the default risk weights/thresholds/penalty used by `scan()`. Merges with existing config. */
 export function configureRiskEngine(config: Partial<RiskEngineConfig>): void {
   defaultRiskEngine.configure(config);
 }
 
-/** Resets risk weights/thresholds to their library defaults. */
+/** Resets risk weights/thresholds/penalty to their library defaults. */
 export function resetRiskEngine(): void {
   defaultRiskEngine.reset();
 }
@@ -106,7 +139,10 @@ let monitoringActive = false;
 function ensureMonitoring(): void {
   if (monitoringActive) return;
   const native = getNativeSecurity();
-  native.setEventListener((event) => emitter.emit(toSecurityEvent(event)));
+  native.setEventListener((event) => {
+    const securityEvent = toSecurityEvent(event);
+    if (securityEvent) emitter.emit(securityEvent);
+  });
   native.startMonitoring();
   monitoringActive = true;
 }
@@ -122,7 +158,7 @@ function teardownMonitoringIfIdle(): void {
 /**
  * Subscribes to real-time security events (root/jailbreak state changes,
  * VPN/proxy changes, screenshots, screen recording, debugger attach,
- * tamper/signature signals). Returns an unsubscribe function.
+ * tamper signals). Returns an unsubscribe function.
  */
 export function addListener(listener: SecurityEventListener): () => void {
   ensureMonitoring();
@@ -146,30 +182,43 @@ export function removeAllListeners(): void {
 }
 
 export {
-  isRooted,
-  isMagiskDetected,
-  isBusyBoxDetected,
-  isJailbroken,
-  isEmulator,
-  isDeveloperModeEnabled,
-  isUsbDebuggingEnabled,
-  isDebuggerAttached,
-  isMockLocationEnabled,
-  isVpnConnected,
-  isProxyEnabled,
-  hasOverlayPermission,
-  isScreenRecording,
-  isScreenCaptured,
-  isHookDetected,
-  isFridaDetected,
-  isXposedDetected,
-  isLSPosedDetected,
-  isTampered,
-  verifyApkIntegrity,
-  getAppSignatureHash,
-  verifyAppSignature,
-  compareAppSignature,
-  isSslPinningSupported,
+  configure,
+  getConfig,
+  checkRoot,
+  checkMagisk,
+  checkBusyBox,
+  checkJailbreak,
+  checkEmulator,
+  checkDeveloperMode,
+  checkUsbDebugging,
+  checkDebugger,
+  checkMockLocation,
+  checkVpn,
+  checkProxy,
+  checkOverlay,
+  checkScreenRecording,
+  checkScreenCapture,
+  checkHooks,
+  checkFrida,
+  checkXposed,
+  checkLSPosed,
+  checkTampering,
+  checkApkIntegrity,
+  checkSignature,
+  getSigningIdentity,
+  isDetected,
+  describeReason,
+  REASON_DESCRIPTIONS,
+  setScreenCaptureProtection,
+  setOverlayProtection,
+  prepareIntegrityToken,
+  requestIntegrityToken,
+  requestKeyAttestation,
+  isAppAttestSupported,
+  generateAppAttestKey,
+  attestAppAttestKey,
+  generateAppAttestAssertion,
+  enableSslPinning,
   buildCertificatePin,
   isValidPinFormat,
   isValidPinSet,
@@ -179,36 +228,53 @@ export {
 export * from './types';
 export {
   RiskEngine,
+  defaultRiskEngine,
+  classifyRiskLevel,
   DEFAULT_RISK_WEIGHTS,
   DEFAULT_RISK_THRESHOLDS,
+  DEFAULT_FAILED_CHECK_PENALTY,
+  RISK_GROUPS,
 } from './risk';
 export type { RiskEvaluation } from './risk';
+export type { SslPinningOptions } from './ssl';
 
 const Security = {
-  isRooted,
-  isMagiskDetected,
-  isBusyBoxDetected,
-  isJailbroken,
-  isEmulator,
-  isDeveloperModeEnabled,
-  isUsbDebuggingEnabled,
-  isDebuggerAttached,
-  isMockLocationEnabled,
-  isVpnConnected,
-  isProxyEnabled,
-  hasOverlayPermission,
-  isScreenRecording,
-  isScreenCaptured,
-  isHookDetected,
-  isFridaDetected,
-  isXposedDetected,
-  isLSPosedDetected,
-  isTampered,
-  verifyApkIntegrity,
-  getAppSignatureHash,
-  verifyAppSignature,
-  compareAppSignature,
-  isSslPinningSupported,
+  configure,
+  getConfig,
+  checkRoot,
+  checkMagisk,
+  checkBusyBox,
+  checkJailbreak,
+  checkEmulator,
+  checkDeveloperMode,
+  checkUsbDebugging,
+  checkDebugger,
+  checkMockLocation,
+  checkVpn,
+  checkProxy,
+  checkOverlay,
+  checkScreenRecording,
+  checkScreenCapture,
+  checkHooks,
+  checkFrida,
+  checkXposed,
+  checkLSPosed,
+  checkTampering,
+  checkApkIntegrity,
+  checkSignature,
+  getSigningIdentity,
+  isDetected,
+  describeReason,
+  setScreenCaptureProtection,
+  setOverlayProtection,
+  prepareIntegrityToken,
+  requestIntegrityToken,
+  requestKeyAttestation,
+  isAppAttestSupported,
+  generateAppAttestKey,
+  attestAppAttestKey,
+  generateAppAttestAssertion,
+  enableSslPinning,
   buildCertificatePin,
   isValidPinFormat,
   isValidPinSet,

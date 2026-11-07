@@ -1,89 +1,120 @@
 import Foundation
-import CryptoKit
+import MachO
 
 /**
- * iOS deliberately does not expose an Android-`PackageManager`-style API for
- * reading your own signing certificate at runtime, and unlike macOS, the
- * iOS SDK does not expose the Code Signing Services APIs
- * (`SecStaticCodeCheckValidity` & friends) at all — code-signature
- * enforcement happens at the OS/kernel level before your code ever runs,
- * with no public in-process way to re-verify it. This checker does the
- * best a userland iOS process legitimately can:
+ * iOS has no Android-`PackageManager`-style API for reading your own signing
+ * certificate, and App Store binaries are re-signed with Apple's certificate
+ * anyway, so a certificate hash would be identical for every App Store app.
+ * This checker does what a userland iOS process legitimately can:
  *
- * - `isTampered()` uses the `get-task-allow` entitlement embedded in the
- *   provisioning profile as a "this is not an App Store distribution
- *   build" signal — the same category of weak-but-real heuristic as
- *   Android's `FLAG_DEBUGGABLE` check. It cannot detect a full, consistent
- *   re-sign under an attacker's own certificate — nothing running inside
- *   the app process legitimately can. Pair this with server-side
- *   attestation (App Attest/DeviceCheck) for a strong guarantee — see the
- *   Security Notes doc.
- * - `getAppSignatureHash()`/`verifyAppSignature()` hash the embedded
- *   provisioning profile (present on Development/Ad Hoc/Enterprise builds)
- *   as a practical "did this exact build's signing identity change"
- *   fingerprint. App Store builds don't ship a provisioning profile, so
- *   this falls back to hashing the bundle's `CodeResources` manifest.
+ * - `checkSignature()` compares the **Team ID** from the app's own
+ *   code-signature entitlements (see `CodeSignature`) against the Team IDs
+ *   you configure. Re-signing an IPA under another developer account changes
+ *   it. An attacker who patches this check out defeats it — pair it with App
+ *   Attest for a guarantee the device can't fake.
+ * - `checkTampering()` (release builds only) flags the `get-task-allow`
+ *   development entitlement in the embedded provisioning profile (a release
+ *   build re-signed with a development profile, the usual way a modified IPA
+ *   gets sideloaded), a cracking tool's `SignerIdentity` Info.plist key, and a
+ *   decrypted App Store binary running outside the App Store.
  */
 final class IntegrityChecker {
 
+  /// Debug builds are development-signed with `get-task-allow` by design, so
+  /// the signal only means something in release builds (CocoaPods compiles
+  /// this pod with `DEBUG` in debug-type configurations).
+  func checkTampering() -> NativeDetectionResult {
+    #if DEBUG
+    return NativeDetectionResult(status: .unsupported, reasons: ["DEBUG_BUILD"], confidence: .high, error: nil)
+    #else
+    return Detection.run { d in
+      d.signal("DEVELOPMENT_SIGNED_RELEASE", .high) { try hasDebugEntitlement() }
+      // Left in Info.plist by IPA cracking tools; Xcode and the App Store never write it.
+      d.signal("SIGNER_IDENTITY_KEY", .high) { Bundle.main.object(forInfoDictionaryKey: "SignerIdentity") != nil }
+      #if !targetEnvironment(simulator)
+      // App Store and TestFlight binaries are FairPlay-encrypted and ship no
+      // provisioning profile. No profile *and* cryptid 0 means a dumped
+      // (decrypted) App Store binary reinstalled outside the store, e.g. via
+      // TrollStore. Development/ad-hoc/enterprise builds carry a profile.
+      d.signal("DECRYPTED_APP_STORE_BINARY", .medium) {
+        guard !ProcessInfo.processInfo.isiOSAppOnMac,
+              Bundle.main.path(forResource: "embedded", ofType: "mobileprovision") == nil
+        else { return false }
+        return try IntegrityChecker.mainExecutableCryptId() == 0
+      }
+      #endif
+    }
+    #endif
+  }
+
+  /// `cryptid` of the main executable's `LC_ENCRYPTION_INFO_64` (0 = not
+  /// encrypted). The kernel decrypts pages, not this header, so the loaded
+  /// image reports what's on disk.
+  static func mainExecutableCryptId() throws -> UInt32 {
+    guard let header = _dyld_get_image_header(0) else {
+      throw DetectionError("main image header unavailable")
+    }
+    guard header.pointee.magic == MH_MAGIC_64 else { throw DetectionError("main image is not 64-bit") }
+    var command = UnsafeRawPointer(header).advanced(by: MemoryLayout<mach_header_64>.size)
+    for _ in 0..<header.pointee.ncmds {
+      let load = command.load(as: load_command.self)
+      if load.cmd == LC_ENCRYPTION_INFO_64 {
+        return command.load(as: encryption_info_command_64.self).cryptid
+      }
+      command = command.advanced(by: Int(load.cmdsize))
+    }
+    // No encryption load command at all: never encrypted.
+    return 0
+  }
+
   func isTampered() -> Bool {
-    return hasDebugEntitlement()
+    checkTampering().isDetected
   }
 
-  func getAppSignatureHash() throws -> String {
-    if let provisioningPath = Bundle.main.path(forResource: "embedded", ofType: "mobileprovision"),
-       let data = FileManager.default.contents(atPath: provisioningPath) {
-      return sha256Hex(data)
+  /// Team ID of whoever signed the running app.
+  func getSigningIdentity() throws -> String {
+    try CodeSignature.teamIdentifier()
+  }
+
+  /// `detected` = the app's Team ID matches none of `expectedSigners`.
+  func checkSignature(expectedSigners: [String]) -> NativeDetectionResult {
+    let provided = expectedSigners.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+    if provided.isEmpty {
+      return Detection.notConfigured("SIGNATURE_HASH_NOT_CONFIGURED")
     }
-
-    // App Store builds ship no embedded.mobileprovision; fall back to the
-    // signature manifest every signed bundle does have.
-    if let resourcesUrl = Bundle.main.url(forResource: "CodeResources", withExtension: nil, subdirectory: "_CodeSignature"),
-       let data = try? Data(contentsOf: resourcesUrl) {
-      return sha256Hex(data)
+    // A malformed configured value is a config bug: report it, don't treat it as "not configured".
+    if let invalid = provided.first(where: { !CodeSignature.isTeamIdentifier($0) }) {
+      return Detection.failed(DetectionError("\"\(invalid)\" is not an Apple Team ID (expected 10 uppercase letters/digits)"))
     }
-
-    throw IntegrityError.signatureUnavailable
+    return Detection.run { d in
+      d.signal("SIGNATURE_MISMATCH", .high) {
+        !provided.contains(try CodeSignature.teamIdentifier())
+      }
+    }
   }
 
-  func verifyAppSignature(expectedSignatureHash: String) -> Bool {
-    guard let actual = try? getAppSignatureHash() else { return false }
-    return actual.caseInsensitiveCompare(expectedSignatureHash) == .orderedSame
-  }
-
-  /// APKs are an Android concept; always "valid" (not applicable) on iOS.
-  func verifyApkIntegrity(expectedSha256: String) -> Bool {
-    return true
-  }
-
-  /// `true` if the embedded provisioning profile grants `get-task-allow`
-  /// (i.e. this is a Development/Ad Hoc build, not an App Store build).
-  private func hasDebugEntitlement() -> Bool {
-    guard let entitlements = readEmbeddedEntitlements() else { return false }
-    return (entitlements["get-task-allow"] as? Bool) == true
+  /// `true` if the embedded provisioning profile grants `get-task-allow`.
+  /// App Store builds ship no profile, so they never trip this.
+  private func hasDebugEntitlement() throws -> Bool {
+    guard let provisioningPath = Bundle.main.path(forResource: "embedded", ofType: "mobileprovision") else {
+      return false
+    }
+    guard let data = FileManager.default.contents(atPath: provisioningPath) else {
+      throw DetectionError("embedded.mobileprovision is unreadable")
+    }
+    guard let plistData = extractPlist(from: data),
+          let profile = try PropertyListSerialization.propertyList(from: plistData, options: PropertyListSerialization.ReadOptions(), format: nil) as? [String: Any]
+    else {
+      throw DetectionError("embedded.mobileprovision has no readable plist payload")
+    }
+    let entitlements = profile["Entitlements"] as? [String: Any]
+    return (entitlements?["get-task-allow"] as? Bool) == true
   }
 
   /// `embedded.mobileprovision` is a CMS/PKCS#7-signed file, but the
   /// embedded plist payload itself is plaintext — extracting the
   /// `<?xml ... </plist>` substring directly avoids needing a full CMS
   /// parser just to read entitlements.
-  private func readEmbeddedEntitlements() -> [String: Any]? {
-    guard let provisioningPath = Bundle.main.path(forResource: "embedded", ofType: "mobileprovision"),
-          let data = FileManager.default.contents(atPath: provisioningPath),
-          let plistData = extractPlist(from: data)
-    else {
-      return nil
-    }
-
-    let readOptions = PropertyListSerialization.ReadOptions()
-    guard let parsed = try? PropertyListSerialization.propertyList(from: plistData, options: readOptions, format: nil),
-          let profile = parsed as? [String: Any]
-    else {
-      return nil
-    }
-    return profile["Entitlements"] as? [String: Any]
-  }
-
   private func extractPlist(from data: Data) -> Data? {
     guard let start = data.range(of: Data("<?xml".utf8)),
           let end = data.range(of: Data("</plist>".utf8), in: start.upperBound..<data.endIndex)
@@ -91,21 +122,5 @@ final class IntegrityChecker {
       return nil
     }
     return data.subdata(in: start.lowerBound..<end.upperBound)
-  }
-
-  private func sha256Hex(_ data: Data) -> String {
-    let digest = SHA256.hash(data: data)
-    return digest.map { String(format: "%02x", $0) }.joined()
-  }
-
-  enum IntegrityError: Error, LocalizedError {
-    case signatureUnavailable
-
-    var errorDescription: String? {
-      switch self {
-      case .signatureUnavailable:
-        return "Unable to derive a signature fingerprint for this build (no embedded.mobileprovision or CodeResources found)."
-      }
-    }
   }
 }

@@ -9,51 +9,92 @@ import XCTest
 /// a real, physical test device.
 final class DetectorSmokeTests: XCTestCase {
 
+  private let validStatuses: [NativeDetectionStatus] = [.detected, .notDetected, .unsupported, .notConfigured, .error]
+
+  private func assertWellFormed(_ result: NativeDetectionResult, file: StaticString = #filePath, line: UInt = #line) {
+    XCTAssertTrue(validStatuses.contains(result.status), file: file, line: line)
+    if result.status == .detected {
+      XCTAssertFalse(result.reasons.isEmpty, "a detection must say why", file: file, line: line)
+    }
+    if result.status == .error {
+      XCTAssertNotNil(result.error, "an error must carry its cause", file: file, line: line)
+    }
+  }
+
   func testEmulatorDetectorReportsSimulatorWhenRunningInTheSimulator() {
-    XCTAssertTrue(EmulatorDetector().isDetected())
+    let result = EmulatorDetector().check()
+    XCTAssertEqual(result.status, .detected)
+    XCTAssertEqual(result.reasons, ["SIMULATOR"])
   }
 
-  func testJailbreakDetectorIsConsistentBetweenIsJailbrokenAndReasons() {
+  func testJailbreakRootPathsAreRecognised() {
+    // roothide: randomised jbroot, no /var/jb
+    XCTAssertTrue(JailbreakDetector.isJailbreakRootPath(
+      "/private/var/containers/Bundle/Application/.jbroot-1A2B3C4D5E6F7A8B/usr/lib/TweakInject/Foo.dylib"))
+    // Dopamine / palera1n rootless
+    XCTAssertTrue(JailbreakDetector.isJailbreakRootPath("/private/var/jb/usr/lib/libellekit.dylib"))
+    XCTAssertTrue(JailbreakDetector.isJailbreakRootPath("/var/jb/Library/MobileSubstrate/DynamicLibraries/X.dylib"))
+    // Stock system and app images
+    XCTAssertFalse(JailbreakDetector.isJailbreakRootPath("/usr/lib/libSystem.B.dylib"))
+    XCTAssertFalse(JailbreakDetector.isJailbreakRootPath("/System/Library/Frameworks/UIKit.framework/UIKit"))
+    XCTAssertFalse(JailbreakDetector.isJailbreakRootPath(
+      "/private/var/containers/Bundle/Application/0A1B2C3D-0000-1111-2222-333344445555/App.app/App"))
+  }
+
+  func testNoLoadedImageComesFromAJailbreakRootInTheSimulator() {
+    XCTAssertFalse(DylibScanner.loadedImageNames().contains(where: JailbreakDetector.isJailbreakRootPath))
+  }
+
+  func testSimulatorBinariesAreNeverFairPlayEncrypted() throws {
+    XCTAssertEqual(try IntegrityChecker.mainExecutableCryptId(), 0)
+  }
+
+  func testJailbreakDetectionIsUnsupportedInTheSimulator() {
+    // The Simulator shares the Mac's filesystem, so jailbreak signals are meaningless there.
     let detector = JailbreakDetector()
-    XCTAssertEqual(detector.isJailbroken(), !detector.reasons().isEmpty())
+    XCTAssertEqual(detector.check().status, .unsupported)
+    XCTAssertFalse(detector.isJailbroken())
   }
 
-  func testHookDetectorDoesNotCrashAndIsConsistent() {
+  func testHookUmbrellaIncludesFridaReasons() {
     let detector = HookDetector()
-    XCTAssertEqual(detector.isAnyHookDetected(), detector.isFridaDetected())
+    let frida = detector.checkFrida()
+    let hooks = detector.checkHooks(frida: frida)
+    assertWellFormed(hooks)
+    for reason in frida.reasons {
+      XCTAssertTrue(hooks.reasons.contains(reason))
+    }
   }
 
-  func testNetworkMonitorChecksReturnWithoutThrowing() {
+  func testNetworkChecksAreWellFormed() {
     let monitor = NetworkMonitor()
-    _ = monitor.isVpnConnected()
-    _ = monitor.isProxyEnabled()
+    assertWellFormed(monitor.checkVpn())
+    assertWellFormed(monitor.checkProxy())
   }
 
-  func testScreenMonitorScreenshotFlagClearsAfterTheRecentWindow() {
+  func testScreenCaptureIsLowConfidenceUntilScreenshotsAreObserved() {
     let monitor = ScreenMonitor()
-    XCTAssertFalse(monitor.isScreenCaptured())
+    XCTAssertEqual(monitor.checkScreenCapture().confidence, .low)
+
+    monitor.isObservingScreenshots = true
+    XCTAssertEqual(monitor.checkScreenCapture().confidence, .medium)
 
     monitor.markScreenshotDetected()
-    XCTAssertTrue(monitor.isScreenCaptured())
+    XCTAssertEqual(monitor.checkScreenCapture().status, .detected)
   }
 
-  func testDeveloperModeDetectorDebuggerCheckDoesNotCrash() {
-    // XCTest itself runs under a test-runner process which may or may not
-    // be traced depending on the environment, so only assert it returns
-    // without crashing/throwing.
-    _ = DeveloperModeDetector().isDebuggerAttached()
+  func testDebuggerCheckIsWellFormed() {
+    // XCTest may or may not run traced depending on the environment.
+    assertWellFormed(DeveloperModeDetector().checkDebugger())
   }
 
-  func testIntegrityCheckerProducesEitherAHashOrAWellDefinedError() {
-    let checker = IntegrityChecker()
-    do {
-      let hash = try checker.getAppSignatureHash()
-      XCTAssertFalse(hash.isEmpty)
-    } catch is IntegrityChecker.IntegrityError {
-      // Acceptable: the XCTest bundle may ship neither an embedded
-      // provisioning profile nor a _CodeSignature/CodeResources file.
-    } catch {
-      XCTFail("Unexpected error type: \(error)")
-    }
+  func testSignatureCheckWithoutExpectedSignersIsNotConfigured() {
+    let result = IntegrityChecker().checkSignature(expectedSigners: [])
+    XCTAssertEqual(result.status, .notConfigured)
+    XCTAssertEqual(result.reasons, ["SIGNATURE_HASH_NOT_CONFIGURED"])
+  }
+
+  func testSignatureCheckRejectsMalformedTeamIds() {
+    XCTAssertEqual(IntegrityChecker().checkSignature(expectedSigners: ["your-team-id"]).status, .error)
   }
 }

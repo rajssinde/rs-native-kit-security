@@ -1,0 +1,34 @@
+# Rescans and toggles screen protection; neither may surface a scan error.
+# Relaunches so it starts at the top: scrolling back up is too slow on CI machines.
+appId: rsnativekit.security.example
+---
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible:
+      id: scan-score
+    timeout: 60000
+- tapOn:
+    id: refresh
+- extendedWaitUntil:
+    visible:
+      id: refresh
+      text: Refresh
+    timeout: 30000
+- assertNotVisible:
+    id: scan-error
+- assertNotVisible:
+    id: scan-incomplete
+- scrollUntilVisible:
+    element:
+      id: protect-screen
+    direction: DOWN
+    timeout: 60000
+- tapOn:
+    id: protect-screen
+- assertNotVisible:
+    id: scan-error
+- tapOn:
+    id: protect-screen
+- assertNotVisible:
+    id: scan-error

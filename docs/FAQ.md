@@ -12,21 +12,27 @@ No. Nitro Modules requires the New Architecture. [Migrate to the New Architectur
 
 The example app's `yarn example web` target exists to preview the **dashboard UI** with `react-native-web`/Vite — it is not a supported detection target. Every detection method throws `SecurityUnsupportedPlatformError` on web rather than pretending the device is secure (see [Security Notes](SECURITY_NOTES.md#web-unsupported-platforms)). Only Android and iOS are real targets.
 
-### Why does `isTampered()` return `true` on my debug build?
+### Why does `checkTampering()` report `unsupported` on my debug build?
 
-That's correct/expected — `isTampered()`'s zero-config heuristic includes "this is a debug/development-signed build" (Android: `FLAG_DEBUGGABLE`; iOS: `get-task-allow` entitlement in the provisioning profile), which is true for every local dev build by design. It should read `false` on a properly signed release/App Store build. If you need a stronger, non-heuristic check, use `verifyAppSignature()`/`verifyApkIntegrity()` with a hash you pin at build time.
+By design. Its zero-config symptoms (Android: `FLAG_DEBUGGABLE` or no installer package; iOS: the `get-task-allow` development entitlement) are normal for every local debug build, so they're only evaluated in release builds. The library is compiled with your app's build type (Android `BuildConfig.DEBUG`, iOS CocoaPods `DEBUG` flag), so this follows your app's configuration automatically. If you use custom iOS build configurations (e.g. `Staging`), map them in your Podfile (`project 'App', 'Staging' => :debug` or `:release`) so the pod is compiled to match.
 
-### Why is `isRooted()` always `false` on iOS (and `isJailbroken()` always `false` on Android)?
+Note that a release build installed with `adb install` (Android) reports `detected` (`NO_INSTALLER_RECORDED`), because it has no installer package — the same symptom a sideloaded, repackaged APK has. For a stronger check, configure expected signers (`configure({ expectedSigners })`) so `checkSignature()` and `scan()` verify who signed the app.
 
-Root and jailbreak are platform-specific concepts. Rather than mapping one onto the other (which every "cross-platform" library that exposes a single `isCompromised()` boolean effectively does, hiding which check actually ran), this SDK keeps them honest and separate. Use `scan()`'s `checks.root`/`checks.jailbreak` if you want a single object to inspect regardless of platform.
+### Why is `checkRoot()` `unsupported` on iOS (and `checkJailbreak()` `unsupported` on Android)?
+
+Root and jailbreak are platform-specific concepts. Rather than mapping one onto the other (which every "cross-platform" library that exposes a single `isCompromised()` boolean effectively does, hiding which check actually ran), this SDK keeps them honest and separate — and says `unsupported` rather than a misleading `false`. Use `scan()`'s `detected` list if you want one answer regardless of platform.
+
+### Why does `not_detected` never have `high` confidence?
+
+Because every on-device check can be hidden from: Magisk DenyList, Shamiko, jailbreak bypass tweaks, or a patched binary can all make a compromised device look clean. A `detected` result is strong evidence; a `not_detected` result is the absence of evidence. That asymmetry is why your backend should combine this SDK with platform attestation.
 
 ### How accurate is emulator detection?
 
 100% on iOS (`targetEnvironment(simulator)` is a compile-time flag baked into the correct binary slice — there's no way for it to be wrong). On Android, it's signal-based (build fingerprint, known emulator packages, QEMU artifacts) and can theoretically be spoofed by a sufficiently customized emulator build, though this covers the common ones (stock AVD, Genymotion, BlueStacks, Nox, MEmu, LDPlayer) reliably.
 
-### Does this intercept my network requests for SSL pinning?
+### Does this enforce SSL pinning on my network requests?
 
-No. `ssl/` ships typed helpers for building/validating a pin set (`buildCertificatePin`, `isValidPinSet`, `hasExpiredPins`) — you still enforce pinning in your networking layer (OkHttp `CertificatePinner` on Android, `URLSessionDelegate` trust evaluation on iOS). See [API Reference](API.md#ssl-pinning-helpers).
+Yes, if you call `enableSslPinning()` at startup, before the first request. It covers React Native's `fetch`/`XMLHttpRequest` on both platforms, plus image loading on iOS. It doesn't cover WebSockets or HTTP clients outside React Native's networking stack. See [API Reference](API.md#ssl-pinning).
 
 ### Can I customize which checks contribute to the risk score?
 

@@ -1,0 +1,55 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci
+    groups:
+      actions:
+        patterns:
+          - '*'
+
+  - package-ecosystem: npm
+    directories:
+      - /
+      - /example
+      - /server
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      dev-dependencies:
+        update-types:
+          - minor
+          - patch
+    ignore:
+      # Upgraded together, on purpose: React Native needs its template files
+      # migrated, and Nitro has its own workflow (nitro-update.yml).
+      - dependency-name: react-native
+      - dependency-name: react
+      - dependency-name: react-dom
+      - dependency-name: '@react-native/*'
+      - dependency-name: '@react-native-community/*'
+      - dependency-name: react-native-nitro-modules
+      - dependency-name: nitrogen
+      - dependency-name: nitrogen-legacy
+
+  - package-ecosystem: gradle
+    directory: /android
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore
+      include: scope
+
+  - package-ecosystem: bundler
+    directory: /example
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: chore
+      include: scope

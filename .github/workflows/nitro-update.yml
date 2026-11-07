@@ -1,0 +1,59 @@
+name: Nitro update
+
+# Opens a pull request when a new react-native-nitro-modules is on npm. CI then
+# builds against it, so a passing PR means the new runtime is safe to mark tested.
+on:
+  schedule:
+    - cron: '0 6 * * 2'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+
+    permissions:
+      actions: write
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      - name: Open a pull request for a newer runtime
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          LATEST="$(npm view react-native-nitro-modules version)"
+          TESTED="$(node -p "require('./nitro-compat.json').newestTested")"
+          if [[ "$LATEST" == "$TESTED" ]]; then
+            echo "Already tested against $LATEST."
+            exit 0
+          fi
+          BRANCH="automation/nitro-$LATEST"
+          if git ls-remote --exit-code --heads origin "$BRANCH" > /dev/null; then
+            echo "$BRANCH already exists."
+            exit 0
+          fi
+          LATEST="$LATEST" node -e "
+            const fs = require('fs');
+            const compat = JSON.parse(fs.readFileSync('nitro-compat.json', 'utf8'));
+            compat.newestTested = process.env.LATEST;
+            compat.ci.android.push(process.env.LATEST);
+            compat.ci.ios.push(process.env.LATEST);
+            fs.writeFileSync('nitro-compat.json', JSON.stringify(compat, null, 2) + '\n');
+          "
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git switch -c "$BRANCH"
+          git add nitro-compat.json
+          git commit -m "fix: test against react-native-nitro-modules $LATEST"
+          git push origin "$BRANCH"
+          gh pr create --base main --head "$BRANCH" \
+            --title "fix: test against react-native-nitro-modules $LATEST" \
+            --body "A new Nitro runtime is on npm. The CI run on this branch builds the example against it on Android and iOS. Merging stops apps on $LATEST seeing the \"newer than tested\" warning."
+          # Pushes made with the workflow token don't start CI; a dispatch does.
+          gh workflow run ci.yml --ref "$BRANCH"

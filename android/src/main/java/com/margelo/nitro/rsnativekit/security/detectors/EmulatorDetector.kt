@@ -1,8 +1,9 @@
 package com.margelo.nitro.rsnativekit.security.detectors
 
 import android.content.Context
-import android.content.pm.PackageManager
 import android.os.Build
+import com.margelo.nitro.rsnativekit.security.NativeConfidence
+import com.margelo.nitro.rsnativekit.security.NativeDetectionResult
 import java.io.File
 
 /**
@@ -20,22 +21,13 @@ internal class EmulatorDetector(private val context: Context) {
     "/system/bin/qemu-props"
   )
 
-  private val emulatorPackages = arrayOf(
-    "com.genymotion.genyd", // Genymotion
-    "com.bluestacks", // BlueStacks
-    "com.bluestacks.home",
-    "com.vphone.launcher", // Nox
-    "com.bignox.app",
-    "com.microvirt.launcher", // MEmu
-    "com.microvirt.market",
-    "com.ldmnq.launcher3" // LDPlayer
-  )
-
-  fun isDetected(): Boolean {
-    return hasEmulatorBuildFingerprint() ||
-      hasEmulatorFiles() ||
-      hasEmulatorPackages() ||
-      hasEmulatorTelephonyProperties()
+  fun check(): NativeDetectionResult = Detection.run {
+    signal("EMULATOR_BUILD_FINGERPRINT", NativeConfidence.MEDIUM) { hasEmulatorBuildFingerprint() }
+    signal("EMULATOR_QEMU_FILES", NativeConfidence.HIGH) { qemuFiles.any { File(it).exists() } }
+    signal("EMULATOR_APP", NativeConfidence.MEDIUM) {
+      KnownPackages.isAnyInstalled(context.packageManager, KnownPackages.EMULATORS)
+    }
+    signal("EMULATOR_TELEPHONY", NativeConfidence.LOW) { hasEmulatorTelephonyProperties() }
   }
 
   private fun hasEmulatorBuildFingerprint(): Boolean {
@@ -65,32 +57,11 @@ internal class EmulatorDetector(private val context: Context) {
       Build.HOST.startsWith("Build")
   }
 
-  private fun hasEmulatorFiles(): Boolean {
-    return qemuFiles.any { File(it).exists() }
-  }
-
-  private fun hasEmulatorPackages(): Boolean {
-    val pm = context.packageManager
-    return emulatorPackages.any { pkg ->
-      try {
-        pm.getPackageInfo(pkg, 0)
-        true
-      } catch (_: PackageManager.NameNotFoundException) {
-        false
-      }
-    }
-  }
-
   private fun hasEmulatorTelephonyProperties(): Boolean {
     // Stock AVDs consistently report these placeholder telephony identifiers.
-    return try {
-      val tm = context.getSystemService(Context.TELEPHONY_SERVICE) as? android.telephony.TelephonyManager
-      val networkOperatorName = tm?.networkOperatorName?.lowercase()
-      networkOperatorName == "android"
-    } catch (_: SecurityException) {
-      false
-    } catch (_: Exception) {
-      false
-    }
+    // Devices without telephony (tablets, some TVs) have no TelephonyManager: not an emulator signal.
+    val tm = context.getSystemService(Context.TELEPHONY_SERVICE) as? android.telephony.TelephonyManager
+      ?: return false
+    return tm.networkOperatorName?.lowercase() == "android"
   }
 }

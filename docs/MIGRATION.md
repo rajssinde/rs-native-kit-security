@@ -6,31 +6,33 @@
 
 | jail-monkey | @rs-native-kit/security |
 |---|---|
-| `JailMonkey.isJailBroken()` | `await Security.isRooted()` (Android) / `await Security.isJailbroken()` (iOS) |
-| `JailMonkey.canMockLocation()` | `await Security.isMockLocationEnabled()` |
-| `JailMonkey.trustFall()` | `await Security.isTampered()` |
+| `JailMonkey.isJailBroken()` | `(await Security.scan()).detected` includes `'root'` (Android) / `'jailbreak'` (iOS) |
+| `JailMonkey.canMockLocation()` | `Security.isDetected(await Security.checkMockLocation())` |
+| `JailMonkey.trustFall()` | `isJailBroken() \|\| canMockLocation()` — use `scan()` and decide on `riskLevel` |
 | `JailMonkey.isOnExternalStorage()` | not covered — out of scope |
-| `JailMonkey.hookDetected()` | `await Security.isHookDetected()` |
+| `JailMonkey.hookDetected()` | `Security.isDetected(await Security.checkHooks())` |
 
 Key difference: jail-monkey's `isJailBroken()` is a single cross-platform boolean; this SDK splits root (Android) and jailbreak (iOS) into distinct, platform-honest methods so you're never asking an Android device "is this jailbroken."
 
-### `react-native-root-detection` / `react-native-device-info` (root/emulator bits)
+### `expo-device` / `react-native-device-info` (root/emulator bits)
 
-Both are single-purpose; this SDK is a superset. Swap direct calls 1:1:
+Both are single-purpose; this SDK is a superset. Every check returns a result object rather than a boolean — use `isDetected()` where you need one:
 
 ```diff
-- import { isRootedExperimentalAsync } from 'react-native-root-detection';
+- import { isRootedExperimentalAsync } from 'expo-device';
 - const rooted = await isRootedExperimentalAsync();
 + import Security from '@rs-native-kit/security';
-+ const rooted = await Security.isRooted();
++ const rooted = Security.isDetected(await Security.checkRoot());
 ```
 
 ```diff
 - import DeviceInfo from 'react-native-device-info';
 - const isEmulator = await DeviceInfo.isEmulator();
 + import Security from '@rs-native-kit/security';
-+ const isEmulator = await Security.isEmulator();
++ const isEmulator = Security.isDetected(await Security.checkEmulator());
 ```
+
+`isDetected()` treats `error` as "not detected" — if a check failing to run matters to you, check `status` directly.
 
 You can run this SDK alongside either during a trial migration — they don't conflict (no shared native module names, no shared JS globals).
 

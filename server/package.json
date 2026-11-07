@@ -1,0 +1,37 @@
+{
+  "name": "@rs-native-kit/security-server",
+  "version": "0.1.0",
+  "description": "Server-side verification for @rs-native-kit/security: Apple App Attest, Google Play Integrity and Android Key Attestation, with single-use challenges. Zero runtime dependencies.",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "default": "./dist/index.mjs"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.test.json",
+    "test": "node --test test/*.test.mts"
+  },
+  "keywords": [
+    "app-attest",
+    "play-integrity",
+    "attestation",
+    "device-integrity",
+    "react-native"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rajssinde/rs-native-kit-security.git",
+    "directory": "server"
+  },
+  "license": "MIT"
+}

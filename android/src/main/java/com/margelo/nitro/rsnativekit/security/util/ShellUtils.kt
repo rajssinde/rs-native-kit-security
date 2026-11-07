@@ -45,22 +45,42 @@ internal object ShellUtils {
 
   /**
    * Runs `command` with a hard [timeoutMs] deadline and returns combined
-   * stdout, or `null` if the command failed, timed out, or couldn't start.
+   * stdout, or `null` if the command exited non-zero, timed out, or couldn't
+   * start. A non-zero exit must count as failure: e.g. `which su` on a stock
+   * device runs fine but exits 1 with no output, and treating that as success
+   * made every device look rooted.
    */
   fun exec(command: Array<String>, timeoutMs: Long = 1500): String? {
     var process: Process? = null
     return try {
-      process = ProcessBuilder(*command)
+      val proc = ProcessBuilder(*command)
         .redirectErrorStream(true)
         .start()
+      process = proc
 
-      val finished = process.waitFor(timeoutMs, TimeUnit.MILLISECONDS)
-      if (!finished) {
-        process.destroyForcibly()
+      // Drain output concurrently: reading only after waitFor() deadlocks once
+      // the output fills the pipe buffer (e.g. a long `getprop` dump).
+      val output = StringBuilder()
+      val reader = Thread {
+        try {
+          BufferedReader(InputStreamReader(proc.inputStream)).use { output.append(it.readText()) }
+        } catch (_: Exception) {
+          // stream closed by destroyForcibly() on timeout
+        }
+      }.apply {
+        isDaemon = true
+        start()
+      }
+
+      if (!proc.waitFor(timeoutMs, TimeUnit.MILLISECONDS)) {
+        return null
+      }
+      reader.join(timeoutMs)
+      if (reader.isAlive || proc.exitValue() != 0) {
         return null
       }
 
-      BufferedReader(InputStreamReader(process.inputStream)).use { it.readText() }
+      output.toString()
     } catch (_: Exception) {
       null
     } finally {
@@ -75,6 +95,23 @@ internal object ShellUtils {
     } catch (_: Exception) {
       false
     }
+  }
+
+  /**
+   * Reads a file that should always be readable by the app (e.g. `/proc/self/maps`),
+   * throwing if it isn't — so a detector reports the signal as failed, not clean.
+   */
+  fun readFile(path: String): String = File(path).readText()
+
+  /**
+   * Reads a `/proc` file through the hook-resistant native path when the
+   * native library is loaded, else through Java. Throws if unreadable.
+   */
+  fun readProcFile(path: String): String {
+    if (NativeChecks.isAvailable) {
+      return NativeChecks.read(path) ?: throw IllegalStateException("$path unreadable")
+    }
+    return readFile(path)
   }
 
   /** Reads a whole file as text, or `null` on any failure (missing, unreadable, SELinux-denied, ...). */

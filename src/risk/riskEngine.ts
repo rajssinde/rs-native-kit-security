@@ -6,39 +6,23 @@ import type {
   SecurityChecks,
   SecurityCheckKey,
 } from '../types';
-import { DEFAULT_RISK_THRESHOLDS, DEFAULT_RISK_WEIGHTS } from './weights';
-
-/**
- * Checks where `true` means "good"/"safe" — risk is contributed when the
- * value is `false`, unlike every other check (where `true` means "risk
- * detected").
- */
-const POSITIVE_CHECKS: ReadonlySet<SecurityCheckKey> = new Set([
-  'signatureValid',
-  'sslPinningSupported',
-]);
+import {
+  DEFAULT_FAILED_CHECK_PENALTY,
+  DEFAULT_RISK_THRESHOLDS,
+  DEFAULT_RISK_WEIGHTS,
+  RISK_GROUPS,
+} from './weights';
 
 export interface RiskEvaluation {
   score: number;
   riskLevel: RiskLevel;
+  /** `riskLevel === 'LOW'` and no check failed to run. */
   secure: boolean;
+  detected: SecurityCheckKey[];
+  failed: SecurityCheckKey[];
+  notConfigured: SecurityCheckKey[];
+  /** Reason codes of every detected check, de-duplicated. */
   reasons: string[];
-}
-
-function isTriggered(key: SecurityCheckKey, checks: SecurityChecks): boolean {
-  const value = checks[key];
-  return POSITIVE_CHECKS.has(key) ? value === false : value === true;
-}
-
-function describeCheck(key: SecurityCheckKey): string {
-  switch (key) {
-    case 'signatureValid':
-      return 'App signature could not be verified';
-    case 'sslPinningSupported':
-      return 'SSL pinning is not supported/configured on this device';
-    default:
-      return `Detected: ${key}`;
-  }
 }
 
 export function classifyRiskLevel(
@@ -51,13 +35,21 @@ export function classifyRiskLevel(
   return 'LOW';
 }
 
+const GROUP_OF = new Map<SecurityCheckKey, number>();
+RISK_GROUPS.forEach((group, index) =>
+  group.forEach((key) => GROUP_OF.set(key, index))
+);
+
 export class RiskEngine {
   private weights: RiskWeights;
   private thresholds: RiskThresholds;
+  private failedCheckPenalty: number;
 
   constructor(config?: Partial<RiskEngineConfig>) {
-    this.weights = { ...DEFAULT_RISK_WEIGHTS, ...config?.weights };
-    this.thresholds = { ...DEFAULT_RISK_THRESHOLDS, ...config?.thresholds };
+    this.weights = { ...DEFAULT_RISK_WEIGHTS };
+    this.thresholds = { ...DEFAULT_RISK_THRESHOLDS };
+    this.failedCheckPenalty = DEFAULT_FAILED_CHECK_PENALTY;
+    if (config) this.configure(config);
   }
 
   configure(config: Partial<RiskEngineConfig>): void {
@@ -67,11 +59,21 @@ export class RiskEngine {
     if (config.thresholds) {
       this.thresholds = { ...this.thresholds, ...config.thresholds };
     }
+    if (config.failedCheckPenalty !== undefined) {
+      const penalty = config.failedCheckPenalty;
+      if (!(penalty >= 0 && penalty <= 1)) {
+        throw new RangeError(
+          `[@rs-native-kit/security] failedCheckPenalty must be between 0 and 1, got ${penalty}`
+        );
+      }
+      this.failedCheckPenalty = penalty;
+    }
   }
 
   reset(): void {
     this.weights = { ...DEFAULT_RISK_WEIGHTS };
     this.thresholds = { ...DEFAULT_RISK_THRESHOLDS };
+    this.failedCheckPenalty = DEFAULT_FAILED_CHECK_PENALTY;
   }
 
   getWeights(): RiskWeights {
@@ -82,25 +84,63 @@ export class RiskEngine {
     return { ...this.thresholds };
   }
 
-  evaluate(
-    checks: SecurityChecks,
-    nativeReasons: string[] = []
-  ): RiskEvaluation {
-    const reasons: string[] = [...nativeReasons];
-    let rawScore = 0;
+  getFailedCheckPenalty(): number {
+    return this.failedCheckPenalty;
+  }
 
-    for (const key of Object.keys(this.weights) as SecurityCheckKey[]) {
-      if (isTriggered(key, checks)) {
-        rawScore += this.weights[key];
-        reasons.push(describeCheck(key));
+  evaluate(checks: SecurityChecks): RiskEvaluation {
+    const detected: SecurityCheckKey[] = [];
+    const failed: SecurityCheckKey[] = [];
+    const notConfigured: SecurityCheckKey[] = [];
+    const reasons = new Set<string>();
+    const groupScores = new Map<number, number>();
+    let ungroupedScore = 0;
+
+    for (const key of Object.keys(checks) as SecurityCheckKey[]) {
+      const result = checks[key];
+      let contribution = 0;
+
+      switch (result.status) {
+        case 'detected':
+          detected.push(key);
+          result.reasons.forEach((reason) => reasons.add(reason));
+          contribution = this.weights[key] ?? 0;
+          break;
+        case 'error':
+          failed.push(key);
+          contribution = (this.weights[key] ?? 0) * this.failedCheckPenalty;
+          break;
+        case 'not_configured':
+          notConfigured.push(key);
+          break;
+      }
+
+      const group = GROUP_OF.get(key);
+      if (group === undefined) {
+        ungroupedScore += contribution;
+      } else {
+        groupScores.set(
+          group,
+          Math.max(groupScores.get(group) ?? 0, contribution)
+        );
       }
     }
 
-    const score = Math.max(0, Math.min(100, rawScore));
-    const riskLevel = classifyRiskLevel(score, this.thresholds);
-    const secure = riskLevel === 'LOW';
+    let rawScore = ungroupedScore;
+    groupScores.forEach((value) => (rawScore += value));
 
-    return { score, riskLevel, secure, reasons };
+    const score = Math.round(Math.max(0, Math.min(100, rawScore)));
+    const riskLevel = classifyRiskLevel(score, this.thresholds);
+
+    return {
+      score,
+      riskLevel,
+      secure: riskLevel === 'LOW' && failed.length === 0,
+      detected,
+      failed,
+      notConfigured,
+      reasons: [...reasons],
+    };
   }
 }
 

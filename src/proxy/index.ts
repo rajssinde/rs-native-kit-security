@@ -1,9 +1,7 @@
-import { getNativeSecurity } from '../specs/nativeSecurity';
+import { runCheck } from '../specs/runCheck';
+import type { DetectionResult } from '../types';
 
-/**
- * Android: `Proxy.getDefaultHost()`/system proxy properties. iOS:
- * `CFNetworkCopySystemProxySettings`.
- */
-export function isProxyEnabled(): Promise<boolean> {
-  return getNativeSecurity().isProxyEnabled();
+/** Android: JVM and network proxy settings. iOS: HTTP, HTTPS and PAC proxy settings. */
+export function checkProxy(): Promise<DetectionResult> {
+  return runCheck((native) => native.checkProxy());
 }

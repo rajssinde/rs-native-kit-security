@@ -2,41 +2,41 @@ import Foundation
 
 final class NetworkMonitor {
 
-  /// Scans active network interfaces for VPN tunnel prefixes
-  /// (`utun`/`ppp`/`ipsec`/`tap`). Avoids requiring the `NetworkExtension`
-  /// entitlement that `NEVPNManager` needs, so this works for every app,
-  /// not just ones that ship their own VPN configuration.
-  func isVpnConnected() -> Bool {
-    var addresses: UnsafeMutablePointer<ifaddrs>?
-    guard getifaddrs(&addresses) == 0, let firstAddr = addresses else { return false }
-    defer { freeifaddrs(addresses) }
+  private let vpnInterfacePrefixes = ["utun", "ppp", "ipsec", "tap", "tun"]
 
-    var pointer: UnsafeMutablePointer<ifaddrs>? = firstAddr
-    let vpnPrefixes = ["utun", "ppp", "ipsec", "tap", "tun"]
-
-    while let current = pointer {
-      let name = String(cString: current.pointee.ifa_name)
-      let isUp = (Int32(current.pointee.ifa_flags) & IFF_UP) == IFF_UP
-      if isUp && vpnPrefixes.contains(where: { name.hasPrefix($0) }) {
-        return true
-      }
-      pointer = current.pointee.ifa_next
-    }
-    return false
-  }
-
-  func isProxyEnabled() -> Bool {
+  private func systemProxySettings() throws -> [String: Any] {
     guard let settings = CFNetworkCopySystemProxySettings()?.takeRetainedValue() as? [String: Any] else {
-      return false
+      throw DetectionError("CFNetworkCopySystemProxySettings returned no settings")
     }
-
-    if let httpEnabled = settings[kCFNetworkProxiesHTTPEnable as String] as? Int, httpEnabled == 1 {
-      return true
-    }
-    if let httpsEnabled = settings["HTTPSEnable"] as? Int, httpsEnabled == 1 {
-      return true
-    }
-    // kCFNetworkProxiesSOCKSEnable is macOS-only; iOS has no public SOCKS proxy key.
-    return false
+    return settings
   }
+
+  /// Checks the per-interface (`__SCOPED__`) entries of the system network
+  /// settings for a tunnel interface. Scanning `getifaddrs()` instead is wrong
+  /// on real devices: iOS always keeps several `utun` interfaces up for
+  /// system services (iCloud Private Relay, Continuity, ...), so every
+  /// iPhone looked VPN-connected. `__SCOPED__` only lists interfaces that
+  /// carry a configured network service, which a tunnel has only while a
+  /// VPN is active. Needs no `NetworkExtension` entitlement.
+  func checkVpn() -> NativeDetectionResult {
+    Detection.run { d in
+      d.signal("VPN_SCOPED_INTERFACE", .high) {
+        guard let scoped = try systemProxySettings()["__SCOPED__"] as? [String: Any] else { return false }
+        return scoped.keys.contains { name in vpnInterfacePrefixes.contains { name.hasPrefix($0) } }
+      }
+    }
+  }
+
+  func checkProxy() -> NativeDetectionResult {
+    Detection.run { d in
+      let settings = try systemProxySettings()
+      d.signal("HTTP_PROXY", .high) { (settings[kCFNetworkProxiesHTTPEnable as String] as? Int) == 1 }
+      d.signal("HTTPS_PROXY", .high) { (settings["HTTPSEnable"] as? Int) == 1 }
+      // Proxy auto-config (PAC) can route traffic through a proxy just as well.
+      d.signal("PAC_PROXY", .medium) { (settings[kCFNetworkProxiesProxyAutoConfigEnable as String] as? Int) == 1 }
+    }
+  }
+
+  func isVpnConnected() -> Bool { checkVpn().isDetected }
+  func isProxyEnabled() -> Bool { checkProxy().isDetected }
 }

@@ -1,9 +1,17 @@
 package com.margelo.nitro.rsnativekit.security
 
+import android.app.Application
+import android.os.SystemClock
 import com.facebook.proguard.annotations.DoNotStrip
 import com.margelo.nitro.NitroModules
 import com.margelo.nitro.core.Promise
+import com.margelo.nitro.rsnativekit.security.attestation.KeyAttestation
+import com.margelo.nitro.rsnativekit.security.attestation.PlayIntegrity
+import com.margelo.nitro.rsnativekit.security.platform.ActivityTracker
+import com.margelo.nitro.rsnativekit.security.platform.ScreenProtection
+import com.margelo.nitro.rsnativekit.security.platform.SslPinning
 import com.margelo.nitro.rsnativekit.security.detectors.BusyBoxDetector
+import com.margelo.nitro.rsnativekit.security.detectors.Detection
 import com.margelo.nitro.rsnativekit.security.detectors.DeveloperModeDetector
 import com.margelo.nitro.rsnativekit.security.detectors.EmulatorDetector
 import com.margelo.nitro.rsnativekit.security.detectors.HookDetector
@@ -21,6 +29,10 @@ import com.margelo.nitro.rsnativekit.security.monitoring.SecurityMonitor
  * `monitoring/SecurityMonitor`. Every detector does its own I/O
  * (file/process/PackageManager access), so every method here runs via
  * `Promise.parallel` — detection work never touches the JS/UI thread.
+ *
+ * Every check goes through [guarded], so an unexpected exception in a
+ * detector becomes an `error` result instead of a rejected promise or, worse,
+ * a silent "not detected".
  */
 @DoNotStrip
 class Security : HybridSecuritySpec() {
@@ -42,6 +54,12 @@ class Security : HybridSecuritySpec() {
   private val overlayDetector by lazy { OverlayDetector(context) }
   private val screenMonitor by lazy { ScreenMonitor(context) }
   private val integrityChecker by lazy { IntegrityChecker(context) }
+  private val playIntegrity by lazy { PlayIntegrity(context) }
+  private val keyAttestation by lazy { KeyAttestation() }
+  private val activities by lazy {
+    ActivityTracker(context.applicationContext as Application, context.currentActivity)
+  }
+  private val screenProtection by lazy { ScreenProtection(activities) }
 
   @Volatile
   private var eventListener: ((NativeSecurityEvent) -> Unit)? = null
@@ -54,164 +72,135 @@ class Security : HybridSecuritySpec() {
       integrityChecker = integrityChecker,
       networkMonitor = networkMonitor,
       screenMonitor = screenMonitor,
-      developerModeDetector = developerModeDetector
+      developerModeDetector = developerModeDetector,
+      activities = activities
     ) { event ->
       eventListener?.invoke(NativeSecurityEvent(event.type, event.message, event.timestamp))
     }
   }
 
-  override fun isRooted(): Promise<Boolean> = Promise.parallel { rootDetector.isRooted() }
+  private inline fun guarded(check: () -> NativeDetectionResult): NativeDetectionResult {
+    return try {
+      check()
+    } catch (e: Throwable) {
+      Detection.failed(e)
+    }
+  }
 
-  override fun isMagiskDetected(): Promise<Boolean> =
-    Promise.parallel { magiskDetector.isDetected() }
+  private fun async(check: () -> NativeDetectionResult): Promise<NativeDetectionResult> =
+    Promise.parallel { guarded(check) }
 
-  override fun isBusyBoxDetected(): Promise<Boolean> =
-    Promise.parallel { busyBoxDetector.isDetected() }
+  override fun checkRoot() = async { rootDetector.check() }
+  override fun checkMagisk() = async { magiskDetector.check() }
+  override fun checkBusyBox() = async { busyBoxDetector.check() }
 
-  /** Jailbreak is an iOS-only concept; always `false` on Android. */
-  override fun isJailbroken(): Promise<Boolean> = Promise.resolved(false)
+  /** Jailbreak is an iOS-only concept. */
+  override fun checkJailbreak(): Promise<NativeDetectionResult> = Promise.resolved(Detection.unsupported())
 
-  override fun isEmulator(): Promise<Boolean> = Promise.parallel { emulatorDetector.isDetected() }
+  override fun checkEmulator() = async { emulatorDetector.check() }
+  override fun checkDeveloperMode() = async { developerModeDetector.checkDeveloperMode() }
+  override fun checkUsbDebugging() = async { developerModeDetector.checkUsbDebugging() }
+  override fun checkDebugger() = async { developerModeDetector.checkDebugger() }
+  override fun checkMockLocation() = async { developerModeDetector.checkMockLocation() }
+  override fun checkVpn() = async { networkMonitor.checkVpn() }
+  override fun checkProxy() = async { networkMonitor.checkProxy() }
+  override fun checkScreenRecording() = async { screenMonitor.checkScreenRecording() }
+  override fun checkScreenCapture() = async { screenMonitor.checkScreenCapture() }
+  override fun checkOverlay() = async { overlayDetector.check() }
+  override fun checkHooks() = async { hookDetector.checkHooks() }
+  override fun checkFrida() = async { hookDetector.checkFrida() }
+  override fun checkXposed() = async { hookDetector.checkXposed() }
+  override fun checkLSPosed() = async { hookDetector.checkLSPosed() }
+  override fun checkTampering() = async { integrityChecker.checkTampering() }
 
-  override fun isDeveloperModeEnabled(): Promise<Boolean> =
-    Promise.parallel { developerModeDetector.isDeveloperModeEnabled() }
+  override fun checkSignature(expectedSigners: Array<String>) =
+    async { integrityChecker.checkSignature(expectedSigners) }
 
-  override fun isUsbDebuggingEnabled(): Promise<Boolean> =
-    Promise.parallel { developerModeDetector.isUsbDebuggingEnabled() }
+  override fun checkApkIntegrity(expectedSha256: String) =
+    async { integrityChecker.checkApkIntegrity(expectedSha256) }
 
-  override fun isDebuggerAttached(): Promise<Boolean> =
-    Promise.parallel { developerModeDetector.isDebuggerAttached() }
-
-  override fun isMockLocationEnabled(): Promise<Boolean> =
-    Promise.parallel { developerModeDetector.isMockLocationEnabled() }
-
-  override fun isVpnConnected(): Promise<Boolean> =
-    Promise.parallel { networkMonitor.isVpnConnected() }
-
-  override fun isProxyEnabled(): Promise<Boolean> =
-    Promise.parallel { networkMonitor.isProxyEnabled() }
-
-  override fun isScreenRecording(): Promise<Boolean> =
-    Promise.parallel { screenMonitor.isScreenRecording() }
-
-  override fun isScreenCaptured(): Promise<Boolean> =
-    Promise.parallel { screenMonitor.isScreenCaptured() }
-
-  override fun hasOverlayPermission(): Promise<Boolean> =
-    Promise.parallel { overlayDetector.hasOverlayPermission() }
-
-  override fun isHookDetected(): Promise<Boolean> =
-    Promise.parallel { hookDetector.isAnyHookDetected() }
-
-  override fun isFridaDetected(): Promise<Boolean> =
-    Promise.parallel { hookDetector.isFridaDetected() }
-
-  override fun isXposedDetected(): Promise<Boolean> =
-    Promise.parallel { hookDetector.isXposedDetected() }
-
-  override fun isLSPosedDetected(): Promise<Boolean> =
-    Promise.parallel { hookDetector.isLSPosedDetected() }
-
-  override fun isTampered(): Promise<Boolean> = Promise.parallel { integrityChecker.isTampered() }
-
-  override fun getAppSignatureHash(): Promise<String> =
+  override fun getSigningIdentity(): Promise<String> =
     Promise.parallel { integrityChecker.getAppSignatureHash() }
 
-  override fun verifyAppSignature(expectedSignatureHash: String): Promise<Boolean> =
-    Promise.parallel { integrityChecker.verifyAppSignature(expectedSignatureHash) }
+  override fun prepareIntegrityToken(cloudProjectNumber: Double): Promise<Unit> = Promise.parallel {
+    playIntegrity.prepare(cloudProjectNumber.toLong())
+  }
 
-  override fun verifyApkIntegrity(expectedSha256: String): Promise<Boolean> =
-    Promise.parallel { integrityChecker.verifyApkIntegrity(expectedSha256) }
+  override fun requestIntegrityToken(requestData: String): Promise<String> =
+    Promise.parallel { playIntegrity.request(requestData) }
 
-  /** Android's TLS stack (OkHttp/`URLConnection`) always supports pinning; this is informational. */
-  override fun isSslPinningSupported(): Promise<Boolean> = Promise.resolved(true)
+  override fun requestKeyAttestation(challenge: String): Promise<Array<String>> =
+    Promise.parallel { keyAttestation.attest(challenge) }
 
-  override fun scan(): Promise<NativeScanResult> = Promise.parallel {
-    val reasons = mutableListOf<String>()
+  /** App Attest is iOS-only; Android apps use Play Integrity instead. */
+  override fun isAppAttestSupported(): Promise<Boolean> = Promise.resolved(false)
 
-    val rootReasons = rootDetector.reasons()
-    reasons += rootReasons
-    val isRootedValue = rootReasons.isNotEmpty()
+  override fun generateAppAttestKey(): Promise<String> = Promise.rejected(appAttestUnavailable())
 
-    val isMagisk = magiskDetector.isDetected()
-    if (isMagisk) reasons += "Magisk detected"
+  override fun attestAppAttestKey(keyId: String, challenge: String): Promise<String> =
+    Promise.rejected(appAttestUnavailable())
 
-    val isBusyBox = busyBoxDetector.isDetected()
-    if (isBusyBox) reasons += "BusyBox binary detected"
+  override fun generateAppAttestAssertion(keyId: String, clientData: String): Promise<String> =
+    Promise.rejected(appAttestUnavailable())
 
-    val isEmu = emulatorDetector.isDetected()
-    if (isEmu) reasons += "Running on an emulator"
+  private fun appAttestUnavailable() =
+    UnsupportedOperationException("App Attest is iOS-only; use Play Integrity on Android")
 
-    val isFrida = hookDetector.isFridaDetected()
-    if (isFrida) reasons += "Frida detected"
+  override fun setScreenCaptureProtection(enabled: Boolean): Promise<Boolean> = Promise.parallel {
+    screenProtection.setCaptureProtection(enabled)
+    true
+  }
 
-    val isXposed = hookDetector.isXposedDetected()
-    if (isXposed) reasons += "Xposed/EdXposed detected"
+  override fun setOverlayProtection(enabled: Boolean): Promise<Boolean> = Promise.parallel {
+    screenProtection.setOverlayProtection(enabled)
+    true
+  }
 
-    val isLSPosed = hookDetector.isLSPosedDetected()
-    if (isLSPosed) reasons += "LSPosed detected"
+  override fun enableSslPinning(domains: Array<NativePinnedDomain>): Promise<Unit> = Promise.parallel {
+    SslPinning.enable(context, domains)
+  }
 
-    val isSubstrateOrRiru = hookDetector.isSubstrateOrRiruDetected()
-    if (isSubstrateOrRiru) reasons += "Substrate/Riru injection layer detected"
+  override fun scan(options: NativeScanOptions): Promise<NativeScanResult> = Promise.parallel {
+    val startedAt = SystemClock.elapsedRealtime()
 
-    val hookAny = isFrida || isXposed || isLSPosed || isSubstrateOrRiru
-
-    val devMode = developerModeDetector.isDeveloperModeEnabled()
-    if (devMode) reasons += "Developer mode enabled"
-
-    val usbDebug = developerModeDetector.isUsbDebuggingEnabled()
-    if (usbDebug) reasons += "USB debugging enabled"
-
-    val debuggerAttached = developerModeDetector.isDebuggerAttached()
-    if (debuggerAttached) reasons += "Debugger attached to process"
-
-    val mockLoc = developerModeDetector.isMockLocationEnabled()
-    if (mockLoc) reasons += "Mock location provider enabled"
-
-    val vpn = networkMonitor.isVpnConnected()
-    if (vpn) reasons += "VPN connection active"
-
-    val proxy = networkMonitor.isProxyEnabled()
-    if (proxy) reasons += "System proxy configured"
-
-    val overlay = overlayDetector.hasOverlayPermission()
-    if (overlay) reasons += "Overlay draw permission/app detected"
-
-    val screenRec = screenMonitor.isScreenRecording()
-    if (screenRec) reasons += "Screen recording/mirroring signal detected"
-
-    val screenCap = screenMonitor.isScreenCaptured()
-
-    val tampered = integrityChecker.isTampered()
-    if (tampered) reasons += "App tamper signal detected"
+    val frida = guarded { hookDetector.checkFrida() }
+    val xposed = guarded { hookDetector.checkXposed() }
+    val lsposed = guarded { hookDetector.checkLSPosed() }
+    // Reuse the individual hook results instead of running every probe twice.
+    val hooks = guarded {
+      Detection.run {
+        include(frida)
+        include(xposed)
+        include(lsposed)
+        include(hookDetector.checkSubstrateOrRiru())
+        include(hookDetector.checkFileApiHooks())
+      }
+    }
 
     val checks = NativeSecurityChecks(
-      root = isRootedValue,
-      jailbreak = false,
-      emulator = isEmu,
-      developerMode = devMode,
-      usbDebugging = usbDebug,
-      vpn = vpn,
-      proxy = proxy,
-      overlay = overlay,
-      frida = isFrida,
-      xposed = isXposed,
-      lsposed = isLSPosed,
-      magisk = isMagisk,
-      busybox = isBusyBox,
-      mockLocation = mockLoc,
-      hookDetected = hookAny,
-      tampered = tampered,
-      // No app-supplied "known good" hash is available in a zero-config scan();
-      // call verifyAppSignature() directly for an authoritative check.
-      signatureValid = true,
-      sslPinningSupported = true,
-      screenRecording = screenRec,
-      screenCaptured = screenCap,
-      debuggerAttached = debuggerAttached
+      root = guarded { rootDetector.check() },
+      magisk = guarded { magiskDetector.check() },
+      busybox = guarded { busyBoxDetector.check() },
+      jailbreak = Detection.unsupported(),
+      emulator = guarded { emulatorDetector.check() },
+      developerMode = guarded { developerModeDetector.checkDeveloperMode() },
+      usbDebugging = guarded { developerModeDetector.checkUsbDebugging() },
+      debugger = guarded { developerModeDetector.checkDebugger() },
+      mockLocation = guarded { developerModeDetector.checkMockLocation() },
+      vpn = guarded { networkMonitor.checkVpn() },
+      proxy = guarded { networkMonitor.checkProxy() },
+      screenRecording = guarded { screenMonitor.checkScreenRecording() },
+      screenCapture = guarded { screenMonitor.checkScreenCapture() },
+      overlay = guarded { overlayDetector.check() },
+      hooks = hooks,
+      frida = frida,
+      xposed = xposed,
+      lsposed = lsposed,
+      tampering = guarded { integrityChecker.checkTampering() },
+      signature = guarded { integrityChecker.checkSignature(options.expectedSigners) }
     )
 
-    NativeScanResult(checks = checks, reasons = reasons.toTypedArray())
+    NativeScanResult(checks = checks, durationMs = (SystemClock.elapsedRealtime() - startedAt).toDouble())
   }
 
   override fun setEventListener(listener: (event: NativeSecurityEvent) -> Unit) {

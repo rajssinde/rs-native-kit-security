@@ -1,12 +1,20 @@
 name: Release
 
-# Manual-only: publishing a new version is a deliberate, reviewed action,
-# not something that should happen automatically on every push to main.
+# Publishes automatically once CI passes on main, if the commits since the last
+# tag include a feat, fix, perf, revert or breaking change. Run it by hand to
+# preview a release or to choose the increment (going to 1.0.0 needs "major").
 on:
+  workflow_run:
+    workflows:
+      - CI
+    types:
+      - completed
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       increment:
-        description: 'Version increment (leave empty to let release-it infer it from Conventional Commits)'
+        description: 'Version increment (empty: decide from the commits)'
         required: false
         type: choice
         default: ''
@@ -27,46 +35,104 @@ concurrency:
 
 jobs:
   release:
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
     environment: npm-publish
 
     permissions:
+      actions: read
       contents: write
       id-token: write
+      issues: write
+      pull-requests: write
 
     steps:
+      # The release commit is pushed to the protected main branch with this key,
+      # the only actor the ruleset lets bypass pull requests.
+      - name: Check the deploy key is configured
+        env:
+          RELEASE_DEPLOY_KEY: ${{ secrets.RELEASE_DEPLOY_KEY }}
+        run: |
+          if [[ -z "$RELEASE_DEPLOY_KEY" ]]; then
+            echo "::error::RELEASE_DEPLOY_KEY is missing. Run scripts/setup-repo.sh."
+            exit 1
+          fi
+
       - name: Checkout
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
+          ref: main
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+          ssh-key: ${{ secrets.RELEASE_DEPLOY_KEY }}
+
+      - name: Decide whether to release
+        id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
+          INCREMENT: ${{ inputs.increment }}
+        run: |
+          if [[ "$EVENT" == "workflow_run" && "$(git rev-parse HEAD)" != "$TESTED_SHA" ]]; then
+            echo "main moved past the tested commit; its own CI run will release it."
+            echo "bump=none" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [[ "$EVENT" == "workflow_dispatch" ]]; then
+            # Release commits skip CI, so check the commit before one.
+            SHA="$(git log -1 --format=%H --invert-grep --grep='^chore: release ')"
+            RUNS="$(gh run list --workflow CI --commit "$SHA" --status success --json databaseId --jq length)"
+            if [[ "$RUNS" == "0" ]]; then
+              echo "::error::CI has not passed for $SHA."
+              exit 1
+            fi
+          fi
+          BUMP="${INCREMENT:-$(node scripts/release-bump.mjs)}"
+          echo "Increment: $BUMP"
+          echo "bump=$BUMP" >> "$GITHUB_OUTPUT"
 
       - name: Setup
+        if: steps.decide.outputs.bump != 'none'
         uses: ./.github/actions/setup
 
-      - name: Lint, typecheck, test
-        run: |
-          yarn lint
-          yarn typecheck
-          yarn test --coverage
-
       - name: Build package
-        run: yarn prepare
+        if: steps.decide.outputs.bump != 'none'
+        run: |
+          yarn prepare
+          node scripts/check-package.mjs
 
       - name: Configure git identity
+        if: steps.decide.outputs.bump != 'none'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Release (dry run)
-        if: ${{ inputs.dry-run }}
-        run: npx release-it ${{ inputs.increment }} --dry-run --ci
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # npm publishes before the push, so catch a broken key before anything is published.
+      - name: Check push access
+        if: steps.decide.outputs.bump != 'none'
+        run: git push --dry-run origin HEAD:main
 
-      - name: Release
-        if: ${{ !inputs.dry-run }}
-        run: npx release-it ${{ inputs.increment }} --ci
+      - name: Release (dry run)
+        if: steps.decide.outputs.bump != 'none' && inputs.dry-run
+        run: npx release-it "$BUMP" --dry-run --ci
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          BUMP: ${{ steps.decide.outputs.bump }}
+          GITHUB_TOKEN: ${{ github.token }}
+
+      # npm authenticates through trusted publishing (OIDC), so there is no npm
+      # token to leak, and it adds provenance to the published package.
+      - name: Release
+        if: steps.decide.outputs.bump != 'none' && !inputs.dry-run
+        run: npx release-it "$BUMP" --ci
+        env:
+          BUMP: ${{ steps.decide.outputs.bump }}
+          GITHUB_TOKEN: ${{ github.token }}
+
+      # Enable with the PUBLISH_SERVER repository variable once the package exists
+      # on npm; trusted publishing can't create a new package.
+      - name: Publish server verifier
+        if: steps.decide.outputs.bump != 'none' && !inputs.dry-run && vars.PUBLISH_SERVER == 'true'
+        working-directory: server
+        run: |
+          ../node_modules/.bin/tsc -p tsconfig.json
+          npm publish --access public

@@ -1,9 +1,10 @@
 package com.margelo.nitro.rsnativekit.security.detectors
 
 import android.content.Context
-import android.content.pm.PackageManager
 import android.os.Build
 import android.provider.Settings
+import com.margelo.nitro.rsnativekit.security.NativeConfidence
+import com.margelo.nitro.rsnativekit.security.NativeDetectionResult
 
 /**
  * Reports overlay/tapjacking exposure. Bulk-enumerating *other* installed
@@ -15,34 +16,17 @@ import android.provider.Settings
  */
 internal class OverlayDetector(private val context: Context) {
 
-  private val knownOverlayAbusePackages = arrayOf(
-    "com.baiduAppSearch.searchbox", // historical overlay-abuse offenders used in public research
-    "com.gtp.nextlauncher.overlay",
-    "com.android.systemui.overlay.fake"
-  )
-
-  fun hasOverlayPermission(): Boolean {
-    return canThisAppDrawOverlays() || hasKnownOverlayAbuseAppInstalled()
+  fun check(): NativeDetectionResult = Detection.run {
+    signal("OVERLAY_PERMISSION_GRANTED", NativeConfidence.LOW) { canThisAppDrawOverlays() }
+    signal("OVERLAY_ABUSE_APP", NativeConfidence.LOW) { hasKnownOverlayAbuseAppInstalled() }
   }
 
   private fun canThisAppDrawOverlays(): Boolean {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return false
-    return try {
-      Settings.canDrawOverlays(context)
-    } catch (_: Exception) {
-      false
-    }
+    return Settings.canDrawOverlays(context)
   }
 
   private fun hasKnownOverlayAbuseAppInstalled(): Boolean {
-    val pm = context.packageManager
-    return knownOverlayAbusePackages.any { pkg ->
-      try {
-        pm.getPackageInfo(pkg, 0)
-        true
-      } catch (_: PackageManager.NameNotFoundException) {
-        false
-      }
-    }
+    return KnownPackages.isAnyInstalled(context.packageManager, KnownPackages.OVERLAY_ABUSE)
   }
 }

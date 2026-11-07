@@ -3,22 +3,42 @@ import Foundation
 import UIKit
 #endif
 
-/// Multiple independent, individually-weak jailbreak signals combined —
-/// mirrors the technique list used by well-known OSS jailbreak-detection
-/// libraries (file existence, Cydia URL scheme, sandbox-escape write test,
-/// loaded-dylib inspection, a `fork()` probe, and suspicious env vars).
+/// Multiple independent, individually-weak jailbreak signals combined:
+/// jailbreak files (via FileManager, libc and a raw system call), symlinked
+/// system directories, jailbreak app URL schemes, a sandbox-escape write test,
+/// injected tweak libraries, a process-spawn probe, and suspicious env vars.
+/// Covers rootful (checkra1n, unc0ver) and rootless (Dopamine, palera1n)
+/// jailbreaks — rootless ones keep everything under `/var/jb`.
 final class JailbreakDetector {
 
-  private let suspiciousPaths = [
+  static let suspiciousPaths = [
+    // Rootless jailbreaks (Dopamine, palera1n rootless, XinaA15)
+    "/var/jb",
+    "/private/var/jb",
+    "/var/jb/.installed_dopamine",
+    "/var/jb/.procursus_strapped",
+    "/var/jb/usr/bin/su",
+    "/var/jb/usr/lib/TweakInject",
+    "/var/jb/Applications/Sileo.app",
+    "/var/containers/Bundle/Application/.jbroot",
+    "/cores/binpack", // palera1n
+    "/private/preboot/jb",
+    // Rootful jailbreaks and package managers
     "/Applications/Cydia.app",
     "/Applications/Sileo.app",
     "/Applications/Zebra.app",
     "/Applications/Installer.app",
+    "/Applications/Filza.app",
     "/Library/MobileSubstrate/MobileSubstrate.dylib",
     "/Library/MobileSubstrate/DynamicLibraries",
+    "/usr/lib/TweakInject",
+    "/usr/lib/libsubstitute.dylib",
+    "/usr/lib/libhooker.dylib",
     "/usr/sbin/sshd",
     "/usr/bin/sshd",
+    "/usr/bin/ssh",
     "/usr/libexec/sftp-server",
+    "/usr/libexec/cydia",
     "/etc/apt",
     "/private/var/lib/apt",
     "/private/var/lib/cydia",
@@ -28,7 +48,8 @@ final class JailbreakDetector {
     "/var/binpack",
     "/.bootstrapped_electra",
     "/.installed_unc0ver",
-    "/jb", // rootless jailbreaks (Dopamine, palera1n) mount point
+    "/.procursus_strapped",
+    "/jb",
     "/usr/lib/libjailbreak.dylib",
     "/Applications/WinterBoard.app",
     "/Applications/blackra1n.app",
@@ -38,60 +59,100 @@ final class JailbreakDetector {
     "/System/Library/LaunchDaemons/com.saurik.Cydia.Startup.plist"
   ]
 
+  /// Directories rootful jailbreaks historically replaced with symlinks to free system space.
+  private let symlinkedDirectories = [
+    "/Applications",
+    "/Library/Ringtones",
+    "/Library/Wallpaper",
+    "/usr/arm-apple-darwin9",
+    "/usr/include",
+    "/usr/libexec",
+    "/usr/share"
+  ]
+
+  /// URL schemes of jailbreak package managers and tools. Each must be listed
+  /// under `LSApplicationQueriesSchemes` in the app's Info.plist to be checkable.
+  private let urlSchemes = ["cydia", "sileo", "zbra", "filza", "undecimus", "activator"]
+
+  /// Tweak injectors, plus the jailbreak-*hiding* tweaks themselves.
   private let dylibMarkers = [
     "MobileSubstrate",
     "SubstrateLoader",
     "SubstrateInserter",
     "CydiaSubstrate",
+    "TweakInject",
+    "libellekit",
+    "libsubstitute",
     "cynject",
     "libhooker",
+    "RocketBootstrap",
     "SSLKillSwitch",
-    "SSLKillSwitch2"
+    "Shadow.dylib",
+    "ABypass",
+    "FlyJB",
+    "LibertyLite",
+    "Choicy"
   ]
 
+  /// Path fragments only a jailbreak root contains: rootless `/var/jb`, and
+  /// roothide's `.jbroot-<random>` directory. roothide has no fixed path to
+  /// probe, but tweaks it injects are loaded from inside that directory.
+  static let jailbreakRootMarkers = ["/.jbroot-", "/var/jb/"]
+
+  static func isJailbreakRootPath(_ path: String) -> Bool {
+    jailbreakRootMarkers.contains { path.contains($0) }
+  }
+
+  func check() -> NativeDetectionResult {
+    #if targetEnvironment(simulator)
+    // The Simulator runs on the Mac's filesystem (which has /usr/sbin/sshd,
+    // /usr/libexec/sftp-server, ...) without the device sandbox, so every
+    // signal here would fire. `checkEmulator()` already reports the Simulator.
+    return Detection.unsupported()
+    #else
+    return Detection.run { d in
+      d.signal("JAILBREAK_FILES", .high) { hasSuspiciousFiles() }
+      d.signal("SYMLINKED_SYSTEM_DIRECTORY", .medium) { hasSymlinkedSystemDirectory() }
+      d.signal("JAILBREAK_URL_SCHEME", .medium) { canOpenJailbreakUrlScheme() }
+      d.signal("SANDBOX_WRITE_ESCAPE", .high) { canWriteOutsideSandbox() }
+      d.signal("TWEAK_INJECTOR_DYLIB", .high) { DylibScanner.anyLoadedImageContains(dylibMarkers) }
+      // Name-independent: any library loaded from a jailbreak root, whatever it's called.
+      d.signal("JAILBREAK_ROOT_IMAGE", .high) { DylibScanner.loadedImageNames().contains(where: Self.isJailbreakRootPath) }
+      #if !DEBUG
+      // Xcode sets DYLD_INSERT_LIBRARIES itself for sanitizers / debugging tools.
+      d.signal("DYLD_INSERT_LIBRARIES_SET", .medium) {
+        ProcessInfo.processInfo.environment["DYLD_INSERT_LIBRARIES"] != nil
+      }
+      #endif
+      d.signal("PROCESS_SPAWN_ALLOWED", .high) { canSpawnProcess() }
+    }
+    #endif
+  }
+
   func isJailbroken() -> Bool {
-    return !reasons().isEmpty
+    check().isDetected
   }
 
-  func reasons() -> [String] {
-    var found: [String] = []
-
-    if hasSuspiciousFiles() {
-      found.append("jailbreak-associated file(s) found on disk")
-    }
-    if canOpenCydiaUrlScheme() {
-      found.append("device can open the cydia:// URL scheme")
-    }
-    if canWriteOutsideSandbox() {
-      found.append("app process can write outside its sandbox container")
-    }
-    if DylibScanner.anyLoadedImageContains(dylibMarkers) {
-      found.append("a jailbreak tweak injector dylib is loaded in-process")
-    }
-    if ProcessInfo.processInfo.environment["DYLD_INSERT_LIBRARIES"] != nil {
-      found.append("DYLD_INSERT_LIBRARIES environment variable is set")
-    }
-    if !isRunningOnSimulator() && canSpawnProcess() {
-      found.append("process spawn succeeded (sandbox restriction on process creation is lifted)")
-    }
-
-    return found
-  }
-
+  /// Any of three independent probes: hiding tweaks have to defeat all of them.
   private func hasSuspiciousFiles() -> Bool {
     let fm = FileManager.default
-    return suspiciousPaths.contains { fm.fileExists(atPath: $0) }
+    return Self.suspiciousPaths.contains { path in
+      fm.fileExists(atPath: path) || access(path, F_OK) == 0 || rs_raw_path_exists(path) == 1
+    }
   }
 
-  /// Requires `cydia` to be declared under `LSApplicationQueriesSchemes` in
-  /// the host app's Info.plist to reliably return `true` (iOS 9+ policy) —
-  /// this SDK cannot add that entry for the consumer app, so document it as
-  /// an opt-in signal in the integration guide.
-  private func canOpenCydiaUrlScheme() -> Bool {
+  private func hasSymlinkedSystemDirectory() -> Bool {
+    symlinkedDirectories.contains { path in
+      var info = stat()
+      return lstat(path, &info) == 0 && (info.st_mode & S_IFMT) == S_IFLNK
+    }
+  }
+
+  private func canOpenJailbreakUrlScheme() -> Bool {
     #if canImport(UIKit) && !os(watchOS)
-    guard let url = URL(string: "cydia://package/com.example.package") else { return false }
+    let urls = urlSchemes.compactMap { URL(string: "\($0)://") }
     var result = false
-    let work = { result = UIApplication.shared.canOpenURL(url) }
+    let work = { result = urls.contains { UIApplication.shared.canOpenURL($0) } }
     if Thread.isMainThread {
       work()
     } else {
@@ -111,14 +172,6 @@ final class JailbreakDetector {
       try? fm.removeItem(atPath: path)
     }
     return created
-  }
-
-  private func isRunningOnSimulator() -> Bool {
-    #if targetEnvironment(simulator)
-    return true
-    #else
-    return false
-    #endif
   }
 
   /// A jailbroken device's relaxed sandbox often allows spawning a new

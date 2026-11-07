@@ -77,17 +77,26 @@ useEffect(() => {
 }, []);
 ```
 
-## Pinning a known-good app signature
+## Pinning the expected app signer
 
-Fetch the hash once (e.g. print it in a debug build), then pin it as an app-side constant:
+Log the signing identity once from a **release** build on each platform (Android: signing-certificate SHA-256 — with Play App Signing, use the app-signing key shown in the Play Console; iOS: your Team ID), then configure it at startup:
 
 ```ts
-// One-time, in a debug build:
-console.log(await Security.getAppSignatureHash());
+// One-time, from a release build:
+console.log(await Security.getSigningIdentity());
 
-// In production code:
-const EXPECTED_SIGNATURE_HASH = 'your-hash-here';
-const isGenuine = await Security.verifyAppSignature(EXPECTED_SIGNATURE_HASH);
+// At app startup:
+Security.configure({
+  expectedSigners: {
+    android: ['AB:CD:…:EF'],
+    ios: ['AB12CD34EF'],
+  },
+});
+
+const signature = await Security.checkSignature();
+if (signature.status === 'detected') {
+  // SIGNATURE_MISMATCH — the app was re-signed by someone else
+}
 ```
 
 ## Custom risk weighting for a fintech app
@@ -98,9 +107,10 @@ Security.configureRiskEngine({
     root: 60,          // heavier than the default 30
     jailbreak: 60,
     frida: 100,         // any hooking framework is an instant CRITICAL
-    hookDetected: 100,
+    hooks: 100,
   },
   thresholds: { medium: 15, high: 30, critical: 50 }, // stricter bands
+  failedCheckPenalty: 1, // a check that fails to run scores like a detection
 });
 ```
 

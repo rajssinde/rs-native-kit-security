@@ -22,26 +22,50 @@ useEffect(() => {
 
 The event system exists so you don't have to poll `scan()` yourself to catch a screenshot, a newly-attached debugger, or a VPN connecting mid-session. Use it to react in real time (e.g. blur a sensitive screen on `SCREENSHOT`), and reserve `scan()` for decisions gated on a fresh, complete snapshot (e.g. right before submitting a payment).
 
-## Pin your app signature at build time
+## Configure expected signers
+
+Without them, `checks.signature` is `not_configured` and a re-signed app goes unnoticed by `scan()`:
 
 ```ts
-const EXPECTED_SIGNATURE_HASH = process.env.EXPECTED_SIGNATURE_HASH; // injected at build time, per environment
-const genuine = await Security.verifyAppSignature(EXPECTED_SIGNATURE_HASH);
+Security.configure({
+  expectedSigners: {
+    android: [process.env.ANDROID_SIGNING_CERT_SHA256!], // injected at build time, per environment
+    ios: [process.env.APPLE_TEAM_ID!],
+  },
+});
 ```
 
-Don't hardcode the hash in a way that's trivially greppable and swappable in a repackaged build — inject it per build environment (CI secret → build-time constant) so a naive "search and replace the expected hash" attack doesn't work against a casually inspected bundle.
+Inject the values per build environment (CI secret → build-time constant) rather than hard-coding them next to the check. An attacker who controls the device can still patch the comparison out — that's why the authoritative signal is server-side attestation, not this check.
+
+## Treat `error` and `not_configured` as "unknown", never as "safe"
+
+`report.complete === false` means at least one check failed to run; `report.notConfigured` lists checks that verified nothing. Both make a "clean" report less trustworthy — send them to your backend along with the score.
 
 ## Tune risk weights to your actual policy, don't ship the defaults blindly
 
-The default weights (`src/risk/weights.ts`) are a reasonable starting point, not a regulatory requirement. A banking app handling wire transfers should likely weight `frida`/`hookDetected`/`tampered` far more heavily than the defaults; a casual mobile game might not care about root/jailbreak at all. Decide your policy, then call `configureRiskEngine()` once at app startup.
+The default weights (`src/risk/weights.ts`) are a reasonable starting point, not a regulatory requirement. A banking app handling wire transfers should likely weight `frida`/`hooks`/`tampering`/`signature` far more heavily than the defaults; a casual mobile game might not care about root/jailbreak at all. Decide your policy, then call `configureRiskEngine()` once at app startup.
 
 ## Don't over-react to `MEDIUM`
 
 A rooted developer's own test device, a legitimate VPN app, or a corporate MDM-managed phone can all trigger individual `MEDIUM`-weighted checks without being a threat. Reserve hard blocks for `CRITICAL`, and use `HIGH`/`MEDIUM` for step-up auth or backend flagging rather than an outright deny — see [Examples](EXAMPLES.md#risk-based-step-up-authentication).
 
-## Combine with `FLAG_SECURE` (Android) / disable screenshots on sensitive screens
+## Protect sensitive screens, don't just detect capture
 
-`isScreenRecording()`/`isScreenCaptured()` are *detection*, not *prevention*. Pair them with `WindowManager.LayoutParams.FLAG_SECURE` (Android) on screens showing card numbers, balances, or credentials — that actually blocks capture, rather than just reporting it after the fact. iOS has no equivalent "block capture" API; detection + reactive blurring (on `SCREENSHOT`/`SCREEN_RECORDING` events) is the best available mitigation there.
+`checkScreenRecording()`/`checkScreenCapture()` are *detection*. On screens showing card numbers, balances or credentials, turn on prevention:
+
+```ts
+useFocusEffect(useCallback(() => {
+  Security.setScreenCaptureProtection(true);
+  Security.setOverlayProtection(true);
+  return () => {
+    Security.setScreenCaptureProtection(false);
+    Security.setOverlayProtection(false);
+  };
+}, []));
+```
+
+- **Android:** `FLAG_SECURE` makes screenshots and recordings come out black and blanks the app in recents. Overlay protection hides other apps' overlays and drops touches through them (tapjacking).
+- **iOS:** there's no API to block screenshots. The app is covered while the screen is recorded or mirrored and in the app-switcher snapshot. Pair it with a reaction to `SCREENSHOT` events (e.g. warn, log, or invalidate a displayed one-time code).
 
 ## Keep the library updated
 
